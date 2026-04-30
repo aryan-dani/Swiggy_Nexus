@@ -1,7 +1,10 @@
 {
   "name": "swiggy-nexus",
   "private": true,
-  "description": "Nexus POC: run `frontend/` (Next.js) and `backend/` (FastAPI). Legacy Vite prototype was removed after UI port.",
+  "description": "Swiggy Nexus POC: Next.js frontend with optional FastAPI backend. See README for local dev and Vercel deploy (Root Directory: frontend/).",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "npm run dev --prefix frontend",
     "build": "npm run build --prefix frontend",

@@ -1,20 +1,94 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Swiggy Nexus
 
-# Run and deploy your AI Studio app
+Synthetic “Nexus” assistant UI demo: neo-brutalist ChatGPT-style workspace with a mock MCP feed. **Not affiliated with Swiggy.** Intended as a POC for agentic UX and optional FastAPI integration.
 
-This contains everything you need to run your app locally.
+## Repository layout
 
-View your app in AI Studio: https://ai.studio/apps/19df039f-31c5-4e08-ad3e-17d809a98115
+| Path | Purpose |
+|------|---------|
+| `frontend/` | **Next.js 16** App Router UI. Includes **built-in `/api/*` Route Handlers** so the demo runs without a separate backend (local + Vercel). |
+| `backend/` | Optional **FastAPI** service (`uvicorn backend.main:app`). Use when you want real streaming/agent logic behind the UI. |
 
-## Run Locally
+## Prerequisites
 
-**Prerequisites:**  Node.js
+- **Node.js** 20.x or newer (LTS recommended) for `frontend/`
+- **Python 3.11+** only if you run `backend/` locally or via Docker
 
+## Quick start (frontend only, mocked API)
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+From the repo root:
+
+```bash
+npm install --prefix frontend
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+With **no** `NEXT_PUBLIC_API_URL`, the UI calls **same-origin** routes under `frontend/app/api/` (SSE chat stub + sidebar JSON). No Python server required.
+
+### Environment (frontend)
+
+Copy the example and edit as needed:
+
+```bash
+copy frontend\.env.example frontend\.env.local   # Windows
+# cp frontend/.env.example frontend/.env.local    # macOS/Linux
+```
+
+See [`frontend/.env.example`](frontend/.env.example) for details.
+
+## Optional: run the FastAPI backend
+
+Install and run:
+
+```bash
+cd backend
+python -m venv .venv
+.venv\Scripts\activate          # Windows
+# source .venv/bin/activate     # macOS/Linux
+pip install -r requirements.txt
+uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Then point the UI at it by setting **`NEXT_PUBLIC_API_URL=http://127.0.0.1:8000`** in `frontend/.env.local` (no trailing slash).
+
+CORS: the backend reads **`FRONTEND_ORIGIN`** or **`CORS_ORIGINS`** (`backend/main.py`). Set e.g. `FRONTEND_ORIGIN=http://localhost:3000` when developing.
+
+### Docker (API only)
+
+```bash
+docker build -t swiggy-nexus-api .
+docker run -p 8000:8000 -e FRONTEND_ORIGIN=http://localhost:3000 swiggy-nexus-api
+```
+
+### Procfile / Heroku-style
+
+[`Procfile`](Procfile) runs the API with `uvicorn` (adjust `PORT` as your host provides).
+
+## Deploy on Vercel (demo)
+
+1. Push this repo to GitHub/GitLab/Bitbucket.
+2. In [Vercel](https://vercel.com) → **New Project** → import the repo.
+3. Set **Root Directory** to **`frontend`** so builds use `frontend/package.json` and Next.js detection.
+4. **No env vars required** for the dummy (mocks ship with the app). Add **`NEXT_PUBLIC_API_URL`** only when your API is hosted elsewhere (HTTPS base URL, no trailing slash).
+
+Production build from repo root:
+
+```bash
+npm run build
+npm run start
+```
+
+## NPM scripts (root)
+
+| Script | Command |
+|--------|---------|
+| `npm run dev` | `next dev` in `frontend/` |
+| `npm run build` | `next build` in `frontend/` |
+| `npm run start` | `next start` in `frontend/` |
+| `npm run lint` | `next lint` in `frontend/` |
+
+## License / disclaimer
+
+Demo and synthetic APIs only; verify behaviour before relying on outputs for real ordering or fulfilment decisions.
