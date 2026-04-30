@@ -27,6 +27,8 @@ Open [http://localhost:3000](http://localhost:3000).
 
 With **no** `NEXT_PUBLIC_API_URL`, the UI calls **same-origin** routes under `frontend/app/api/` (SSE chat stub + sidebar JSON). No Python server required.
 
+**Reviewer path:** Open the home page and use **Reviewer · Signals & scenarios** (synthetic triggers + story presets — Social Deadlock, Flow-state fueler, Zero-waste meal). Credential narrative and dual-agent framing: see [`PITCH.md`](./PITCH.md).
+
 ### Environment (frontend)
 
 Copy the example and edit as needed:

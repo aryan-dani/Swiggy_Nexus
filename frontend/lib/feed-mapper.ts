@@ -71,6 +71,30 @@ export function mapFeedItemToNexusCard(
     };
   }
 
+  if (item.type === "deal_strip") {
+    return {
+      id,
+      type: "food",
+      title: item.title,
+      description: item.subtitle || "Promo / cross-vertical cue",
+      rating: undefined,
+      offer: "Agent-suggested route (demo)",
+      imageUrl: FOOD_IMG,
+    };
+  }
+
+  if (item.type === "join_strip") {
+    return {
+      id,
+      type: "dineout",
+      title: item.title,
+      description: item.subtitle || "Join link",
+      rating: undefined,
+      offer: "One-tap RSVP (mock)",
+      imageUrl: DINE_IMG,
+    };
+  }
+
   if (item.type === "error") {
     return null;
   }

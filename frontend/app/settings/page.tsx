@@ -143,6 +143,72 @@ export default function SettingsPage() {
           </div>
         </Section>
 
+        <Section title="Reviewer demo parameters">
+          <p className="mb-4 text-sm font-medium text-slate-600">
+            Used by the <strong>Social Deadlock Breaker</strong> and{" "}
+            <strong>Zero-waste meal</strong> scenarios on the home page (synthetic only).
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="party-size" className="font-display text-xs font-bold">
+                Party size (deadlock)
+              </Label>
+              <input
+                id="party-size"
+                type="number"
+                min={2}
+                max={20}
+                className="mt-1 w-full border-2 border-black bg-slate-50 px-3 py-2 font-display text-sm font-medium"
+                value={s.deadlockPartySize}
+                onChange={(e) =>
+                  patch({ deadlockPartySize: Number(e.target.value) || s.deadlockPartySize })
+                }
+              />
+            </div>
+            <div>
+              <Label htmlFor="budget" className="font-display text-xs font-bold">
+                Budget / head (₹)
+              </Label>
+              <input
+                id="budget"
+                type="number"
+                min={200}
+                max={5000}
+                step={50}
+                className="mt-1 w-full border-2 border-black bg-slate-50 px-3 py-2 font-display text-sm font-medium"
+                value={s.deadlockBudgetInr}
+                onChange={(e) =>
+                  patch({ deadlockBudgetInr: Number(e.target.value) || s.deadlockBudgetInr })
+                }
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <Label htmlFor="city" className="font-display text-xs font-bold">
+                City label (signals)
+              </Label>
+              <input
+                id="city"
+                type="text"
+                className="mt-1 w-full border-2 border-black bg-slate-50 px-3 py-2 font-display text-sm font-medium"
+                value={s.deadlockCity}
+                onChange={(e) => patch({ deadlockCity: e.target.value })}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <Label htmlFor="recipe" className="font-display text-xs font-bold">
+                Recipe hint (zero-waste pantry diff)
+              </Label>
+              <input
+                id="recipe"
+                type="text"
+                className="mt-1 w-full border-2 border-black bg-slate-50 px-3 py-2 font-display text-sm font-medium"
+                value={s.zerowasteRecipeHint}
+                onChange={(e) => patch({ zerowasteRecipeHint: e.target.value })}
+              />
+            </div>
+          </div>
+        </Section>
+
         <Section title="Data & demo">
           <div className="flex gap-3">
             <Database className="h-5 w-5 shrink-0 text-slate-400" />

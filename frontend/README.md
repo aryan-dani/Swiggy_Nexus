@@ -22,6 +22,8 @@ npm run dev
 
 Opens [http://localhost:3000](http://localhost:3000).
 
+**Reviewer:** use **Signals & scenarios** above the chat (home page); pitch copy for credential forms lives in repo root [**PITCH.md**](../PITCH.md).
+
 ## API routing
 
 | Mode | Configuration |

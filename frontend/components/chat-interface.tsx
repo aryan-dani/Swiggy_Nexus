@@ -24,12 +24,15 @@ export type ChatInterfaceProps = {
   onFeedItems: (items: FeedItem[]) => void;
   devMode: boolean;
   sessionHints?: boolean;
+  /** Passed to same-origin mock orchestration (`/api/chat/stream`). */
+  chatContext?: Record<string, unknown>;
 };
 
 export default function ChatInterface({
   onFeedItems,
   devMode,
   sessionHints = true,
+  chatContext,
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -58,7 +61,7 @@ export default function ChatInterface({
 
     let assistantText = "";
 
-    await postChatStream(text, undefined, (ev) => {
+    await postChatStream(text, chatContext, (ev) => {
       if (ev.type === "thinking") {
         setThinking((t) => [...t, ev.payload.text]);
       }
@@ -95,7 +98,7 @@ export default function ChatInterface({
     ]);
 
     setBusy(false);
-  }, [appendLog, busy, input, onFeedItems]);
+  }, [appendLog, busy, chatContext, input, onFeedItems]);
 
   return (
     <div className="flex h-full min-h-[65vh] flex-col gap-4">

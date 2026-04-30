@@ -1,36 +1,42 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AppSidebar } from "@/components/app-sidebar";
-import { DashboardHeader } from "@/components/dashboard-header";
 import ChatInterface from "@/components/chat-interface";
+import { DashboardHeader } from "@/components/dashboard-header";
 import McpFeed from "@/components/mcp-feed";
+import { NexusSignalsBar } from "@/components/nexus-signals-bar";
 import type { FeedItem } from "@/lib/api";
-import { loadDemoSettings, saveDemoSettings } from "@/lib/nexus-settings-storage";
+import {
+  DEMO_SETTINGS_DEFAULTS,
+  loadDemoSettings,
+  orchestrationContextFromSettings,
+  saveDemoSettings,
+  type NexusDemoSettings,
+} from "@/lib/nexus-settings-storage";
 import { fadeUp, neoSpring, staggerContainer } from "@/lib/motion";
 
 export default function Home() {
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [sessionId, setSessionId] = useState(0);
-  const [devMode, setDevMode] = useState(false);
-  const [sessionHints, setSessionHints] = useState(true);
+  const [demo, setDemo] = useState<NexusDemoSettings>(() => DEMO_SETTINGS_DEFAULTS);
 
   useEffect(() => {
-    const s = loadDemoSettings();
-    setDevMode(s.devMode);
-    setSessionHints(s.sessionHints);
+    setDemo(loadDemoSettings());
   }, []);
 
   useEffect(() => {
-    const sync = () => {
-      const s = loadDemoSettings();
-      setDevMode(s.devMode);
-      setSessionHints(s.sessionHints);
-    };
+    const sync = () => setDemo(loadDemoSettings());
     window.addEventListener("focus", sync);
     return () => window.removeEventListener("focus", sync);
+  }, []);
+
+  const chatContext = useMemo(() => orchestrationContextFromSettings(demo), [demo]);
+
+  const handleDemoPatch = useCallback((next: NexusDemoSettings) => {
+    setDemo(next);
   }, []);
 
   const handleNewChat = useCallback(() => {
@@ -45,14 +51,13 @@ export default function Home() {
   }, []);
 
   const setDevModePersist = useCallback((v: boolean) => {
-    setDevMode(v);
-    saveDemoSettings({ devMode: v });
+    setDemo(saveDemoSettings({ devMode: v }));
   }, []);
 
   const sidebarProps = {
     onNewChat: handleNewChat,
     onRecent: scrollChatToTop,
-    devMode,
+    devMode: demo.devMode,
     onDevModeChange: setDevModePersist,
   };
 
@@ -79,13 +84,18 @@ export default function Home() {
           >
             <motion.section
               variants={fadeUp}
-              className="flex min-h-0 min-w-0 flex-1 flex-col lg:max-w-xl xl:max-w-2xl"
+              className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 lg:max-w-xl xl:max-w-2xl"
             >
+              <NexusSignalsBar
+                settings={demo}
+                onSettingsChange={handleDemoPatch}
+              />
               <ChatInterface
                 key={sessionId}
                 onFeedItems={setFeedItems}
-                devMode={devMode}
-                sessionHints={sessionHints}
+                devMode={demo.devMode}
+                sessionHints={demo.sessionHints}
+                chatContext={chatContext}
               />
             </motion.section>
             <motion.section

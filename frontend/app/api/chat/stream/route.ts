@@ -2,14 +2,26 @@ import { buildDemoChatEvents } from "@/lib/demo-chat-mock";
 
 export async function POST(req: Request) {
   let message = "";
+  let context: Record<string, unknown> = {};
   try {
-    const body = (await req.json()) as { message?: unknown };
+    const body = (await req.json()) as {
+      message?: unknown;
+      context?: unknown;
+    };
     message = typeof body?.message === "string" ? body.message : "";
+    if (
+      body?.context !== undefined &&
+      body.context !== null &&
+      typeof body.context === "object" &&
+      !Array.isArray(body.context)
+    ) {
+      context = body.context as Record<string, unknown>;
+    }
   } catch {
     /* empty demo */
   }
 
-  const events = buildDemoChatEvents(message);
+  const events = buildDemoChatEvents(message, context);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
