@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 252 91% 67%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 0%;
+    --input: 0 0% 0%;
+    --ring: 252 91% 67%;
+    --radius: 0.25rem;
+    --sidebar: 0 0% 100%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 252 91% 67%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 40% 96%;
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-border: 0 0% 0%;
+    --sidebar-ring: 252 91% 67%;
+    --chart-1: 252 91% 67%;
+    --chart-2: 142 76% 41%;
+    --chart-3: 48 100% 50%;
+    --chart-4: 0 72% 51%;
+    --chart-5: 222 47% 11%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-white text-on-surface font-sans antialiased;
+  }
+}
+
+@layer components {
+  .bento-card {
+    @apply border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all;
+  }
+
+  .bento-card-interactive {
+    @apply bento-card;
+  }
+
+  .bento-button {
+    @apply border-2 border-black bg-white px-4 py-2 font-display text-xs font-bold uppercase tracking-widest shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all hover:bg-slate-50 active:translate-x-px active:translate-y-px active:shadow-none;
+  }
+
+  .bento-input {
+    @apply border-2 border-black bg-white px-4 py-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] outline-none transition-all focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)];
+  }
+
+  /* Flat canvas — matches product reference (solid neo, no tinted mesh). */
+  .mesh-bg {
+    background-color: #ffffff;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}

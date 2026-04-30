@@ -1,0 +1,6 @@
+{
+  "name": "Swiggy Nexus",
+  "description": "Premium AI-powered assistant for local food, lifestyle, and delivery services.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["AI Assistant", "Local Search", "Personalized Curation"]
+}
