@@ -1,0 +1,1 @@
+"""Food mock MCP dispatcher."""

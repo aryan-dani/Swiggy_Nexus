@@ -1,0 +1,1 @@
+"""Instamart mock MCP dispatcher."""

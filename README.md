@@ -8,6 +8,12 @@ Synthetic “Nexus” assistant UI demo: neo-brutalist ChatGPT-style workspace w
 |------|---------|
 | `frontend/` | **Next.js 16** App Router UI. Includes **built-in `/api/*` Route Handlers** so the demo runs without a separate backend (local + Vercel). |
 | `backend/` | Optional **FastAPI** service (`uvicorn backend.main:app`). Use when you want real streaming/agent logic behind the UI. |
+| `docs/local-mock-mcp.md` | **Offline** MCP-style mock servers `POST /food`, `/im`, `/dineout` + streaming agent wired for demo video. |
+| `docs/swiggy-builders-club.md` | **Swiggy Builders Club** digest: official `mcp.swiggy.com` MCP (for production integration). |
+
+Real Swiggy MCP lives at `https://mcp.swiggy.com`; this repo ships a **fully local mock** (`mcp_server/` + [`docs/local-mock-mcp.md`](docs/local-mock-mcp.md)) for demos with no outbound API calls.
+
+For partnering with Swiggy in production see [**Swiggy Builders Club — What you can use and how**](docs/swiggy-builders-club.md).
 
 ## Prerequisites
 
@@ -53,7 +59,7 @@ pip install -r requirements.txt
 uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Then point the UI at it by setting **`NEXT_PUBLIC_API_URL=http://127.0.0.1:8000`** in `frontend/.env.local` (no trailing slash).
+Then point the UI at it by setting **`NEXT_PUBLIC_API_URL=http://127.0.0.1:8000`** in `frontend/.env.local` (no trailing slash). You get **offline mock MCP**: `POST /food`, `/im`, `/dineout` plus multi-step SSE chat — see [`docs/local-mock-mcp.md`](docs/local-mock-mcp.md) for prompts, `curl` samples, `LOCAL_MCP_HTTP`, and UX notes.
 
 CORS: the backend reads **`FRONTEND_ORIGIN`** or **`CORS_ORIGINS`** (`backend/main.py`). Set e.g. `FRONTEND_ORIGIN=http://localhost:3000` when developing.
 

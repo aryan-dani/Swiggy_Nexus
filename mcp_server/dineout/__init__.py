@@ -1,0 +1,1 @@
+"""Dineout mock MCP dispatcher."""

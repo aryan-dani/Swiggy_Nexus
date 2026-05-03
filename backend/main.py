@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.agent import run_agent_stream
+from mcp_server.http_routes import router as mock_mcp_router
 from backend.sidebar_demo import (
     analytics_snapshot,
     archive_list,
@@ -30,6 +31,8 @@ def _parse_origins() -> list[str]:
 
 
 app = FastAPI(title="Swiggy Nexus API", version="0.1.0")
+
+app.include_router(mock_mcp_router)
 
 app.add_middleware(
     CORSMiddleware,

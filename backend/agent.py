@@ -1,66 +1,22 @@
-"""LangGraph workflow: analyze intent → mock MCP tools → normalized feed cards."""
+"""Streaming Nexus agent over **local mock** MCP (`/food`, `/im`, `/dineout`)."""
 
 from __future__ import annotations
 
-import json
-import operator
-from typing import Annotated, Any, Literal, TypedDict
+import uuid
+from typing import Any, Generator, Literal
 
-from langgraph.graph import END, StateGraph
+from backend.mcp_client import LocalMCPError, call_tool
 
-from backend.mcp_server import dispatch
-
-
-class AgentState(TypedDict, total=False):
-    user_message: str
-    context: dict[str, Any]
-    thinking_steps: Annotated[list[str], operator.add]
-    vertical: Literal["food", "instamart", "dineout"]
-    mcp_method: str
-    mcp_params: dict[str, Any]
-    raw_tool_results: dict[str, Any]
-    rpc_logs: Annotated[list[dict[str, Any]], operator.add]
-    feed_items: list[dict[str, Any]]
-    assistant_reply: str
+Vertical = Literal["food", "im", "dineout"]
 
 
-def _infer_cuisine(message: str) -> str:
-    m = message.lower()
-    if "italian" in m:
-        return "italian"
-    if "chinese" in m:
-        return "chinese"
-    if "south indian" in m or "dosa" in m:
-        return "south indian"
-    if "biryani" in m:
-        return "biryani"
-    return "comfort food"
-
-
-def _infer_instamart_category(message: str, ctx: dict[str, Any]) -> str:
-    m = message.lower()
-    if "snack" in m or "chips" in m:
-        return "snacks"
-    if "drink" in m or "beverage" in m or "coffee" in m:
-        return "beverages"
-    if ctx.get("category"):
-        return str(ctx["category"])
-    return "groceries"
-
-
-def _default_coords(ctx: dict[str, Any]) -> tuple[float, float]:
-    lat = float(ctx.get("lat", 12.9716))
-    long = float(ctx.get("long", 77.5946))
-    return lat, long
-
-
-def analyze_context(state: AgentState) -> dict[str, Any]:
-    msg = state.get("user_message") or ""
-    ctx = state.get("context") or {}
-    steps: list[str] = ["Analyzing user context and natural-language intent…"]
-
-    mlow = msg.lower()
-    vertical: Literal["food", "instamart", "dineout"] = "food"
+def _detect_vertical(message: str, ctx: dict[str, Any]) -> Vertical:
+    mlow = message.lower()
+    ctx_v = ctx.get("vertical")
+    if ctx_v == "dineout" or ctx.get("scenario") == "team_dinner":
+        return "dineout"
+    if ctx_v == "instamart":
+        return "im"
 
     if any(
         k in mlow
@@ -72,249 +28,343 @@ def analyze_context(state: AgentState) -> dict[str, Any]:
             "party of",
             "table for",
             "restaurant night",
+            "fine dining",
         )
     ):
-        vertical = "dineout"
-    elif any(
+        return "dineout"
+    if any(
         k in mlow
         for k in (
             "instamart",
             "grocery",
             "groceries",
-            "snacks",
             "stock up",
-            "coding for",
             "ingredient",
-            "supplies",
+            "snacks aisle",
+            "milk delivery",
+            "bread and eggs",
         )
     ):
-        vertical = "instamart"
+        return "im"
+    return "food"
 
-    if ctx.get("scenario") == "team_dinner" or ctx.get("vertical") == "dineout":
-        vertical = "dineout"
-    if ctx.get("vertical") == "instamart":
-        vertical = "instamart"
 
-    method_map = {
-        "food": "food_search_restaurants",
-        "instamart": "instamart_get_inventory",
-        "dineout": "dineout_check_availability",
-    }
-    method = method_map[vertical]
+def _is_food_pizza_flow(message: str) -> bool:
+    m = message.lower()
+    if any(
+        p in m
+        for p in ("order pizza", "order a pizza", "pizza delivery", "get me pizza", "get a pizza", "checkout pizza")
+    ):
+        return True
+    if any(b in m for b in ("order", "buy", "checkout", "place order")) and "pizza" in m:
+        return True
+    return "buy pizza" in m
 
-    params: dict[str, Any]
-    if vertical == "food":
-        lat, long = _default_coords(ctx)
-        params = {
-            "cuisine": _infer_cuisine(msg),
-            "lat": lat,
-            "long": long,
-        }
-    elif vertical == "instamart":
-        params = {"category": _infer_instamart_category(msg, ctx)}
-    else:
-        params = {
-            "restaurant_id": str(ctx.get("restaurant_id", "demo-bistro-001")),
-            "party_size": int(ctx.get("party_size", 4)),
-            "time": str(ctx.get("time", "19:00")),
-        }
 
-    steps.append(f"Selected vertical `{vertical}` → will call `{method}` (mock MCP).")
+def _thinking(text: str) -> dict[str, Any]:
+    return {"type": "thinking", "payload": {"text": text}}
 
+
+def _sse_tool(server_key: Vertical, http_path: str, method: str, params: dict[str, Any], data: Any) -> dict[str, Any]:
     return {
-        "thinking_steps": steps,
-        "vertical": vertical,
-        "mcp_method": method,
-        "mcp_params": params,
+        "jsonrpc": "2.0",
+        "vertical": server_key,
+        "server_path": http_path,
+        "method": method,
+        "params": params,
+        "result": {"success": True, "data": data},
+        "demo_note": "local_mock_mcp",
     }
 
 
-def call_tools(state: AgentState) -> dict[str, Any]:
-    method = state["mcp_method"]
-    params = state["mcp_params"]
-    preview = json.dumps(params, default=str)
-    steps = [f"Invoking Swiggy MCP tool `{method}` with params: {preview}"]
-
-    try:
-        result, log = dispatch(method, params)
-    except Exception as e:  # noqa: BLE001
-        err = str(e)
-        steps.append(f"Tool error: {err}")
-        return {
-            "thinking_steps": steps,
-            "raw_tool_results": {"method": method, "error": err},
-            "rpc_logs": [
-                {
-                    "jsonrpc": "2.0",
-                    "method": method,
-                    "params": params,
-                    "error": err,
-                }
-            ],
-        }
-
-    steps.append(f"Received mock result from `{method}` — synthesizing cards…")
-    return {
-        "thinking_steps": steps,
-        "raw_tool_results": {"method": method, "result": result},
-        "rpc_logs": [log],
-    }
+def _pick_address_id(ctx: dict[str, Any], addrs: dict[str, Any]) -> str:
+    aid = str(ctx.get("addressId") or ctx.get("address_id") or "")
+    plist = addrs.get("addresses") or []
+    if not aid and plist:
+        aid = str(plist[0].get("addressId", ""))
+    return aid
 
 
-def synthesize(state: AgentState) -> dict[str, Any]:
-    vertical = state.get("vertical", "food")
-    raw = state.get("raw_tool_results") or {}
-    result = raw.get("result")
-    steps: list[str] = ["Building Nexus Live Feed cards for the UI…"]
+def _pick_pizza_restaurant(sr: dict[str, Any]) -> str | None:
+    rows = sr.get("restaurants") or []
+    for r in rows:
+        cuisines = [c.lower() for c in (r.get("cuisines") or [])]
+        name = str(r.get("name", "")).lower()
+        if "pizza" in cuisines or "domino" in name:
+            return str(r["restaurant_id"])
+    return str(rows[0]["restaurant_id"]) if rows else None
 
-    feed_items: list[dict[str, Any]] = []
-    reply_parts: list[str] = []
 
-    if raw.get("error"):
-        feed_items.append(
+def _compose_food_discovery_feed(addrs_blob: dict[str, Any], sr_blob: dict[str, Any]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for a in addrs_blob.get("addresses") or []:
+        items.append(
             {
-                "type": "error",
-                "title": "Tool error",
-                "subtitle": str(raw.get("error")),
-                "meta": {},
+                "type": "address",
+                "title": a.get("label", "Saved address"),
+                "subtitle": f"{a.get('line1')} · {a.get('area')}, Pune {a.get('pin', '')}".strip(),
+                "meta": {"addressId": a.get("addressId")},
             }
         )
-        return {
-            "thinking_steps": steps,
-            "feed_items": feed_items,
-            "assistant_reply": "Something went wrong calling the mock MCP tool. Toggle Developer Mode to inspect logs.",
-        }
-
-    if vertical == "food" and isinstance(result, list):
-        for r in result:
-            feed_items.append(
-                {
-                    "type": "restaurant",
-                    "title": r.get("name", "Restaurant"),
-                    "subtitle": f"★ {r.get('rating', '—')} · ETA ~{r.get('eta_mins', '?')} min · {r.get('tag', '')}",
-                    "meta": {
-                        "id": r.get("id"),
-                        "cuisine": r.get("cuisine"),
-                        "eta_mins": r.get("eta_mins"),
-                    },
-                }
-            )
-        reply_parts.append(f"Here are {len(feed_items)} demo restaurants for your run.")
-    elif vertical == "instamart" and isinstance(result, list):
-        for item in result:
-            stock = "In stock" if item.get("in_stock") else "Out of stock (demo)"
-            feed_items.append(
-                {
-                    "type": "instamart",
-                    "title": item.get("name", "SKU"),
-                    "subtitle": f"₹{item.get('price_inr', '—')} · {stock}",
-                    "meta": {"sku": item.get("sku"), "in_stock": item.get("in_stock")},
-                }
-            )
-        reply_parts.append("Instamart-style inventory (synthetic) is ready on the right.")
-    elif vertical == "dineout" and isinstance(result, dict):
-        slots = result.get("slots") or []
-        feed_items.append(
+    for r in sr_blob.get("restaurants") or []:
+        eta = r.get("eta_mins", "?")
+        items.append(
             {
-                "type": "dineout",
-                "title": f"Dineout · Party of {result.get('party_size', '?')}",
-                "subtitle": f"Slot {result.get('time_slot')} · Available: {result.get('available')}",
-                "meta": {"slots": slots, "restaurant_id": result.get("restaurant_id")},
+                "type": "restaurant",
+                "title": r.get("name", "Restaurant"),
+                "subtitle": f"★ {r.get('rating', '—')} · ETA ~{eta} min · {', '.join(r.get('cuisines') or [])}",
+                "meta": {
+                    "restaurant_id": r.get("restaurant_id"),
+                    "eta_mins": r.get("eta_mins"),
+                },
             }
         )
-        for s in slots[:5]:
-            feed_items.append(
+    return items
+
+
+def run_food_browse(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[str, Any], None, None]:
+    yield _thinking("Fetching saved Pune addresses via mock `food.get_addresses`.")
+    addrs_any = call_tool("food", "get_addresses", {})
+    addrs = addrs_any if isinstance(addrs_any, dict) else {}
+    yield {"type": "tool", "payload": _sse_tool("food", "/food", "get_addresses", {}, addrs_any)}
+
+    addr_id = _pick_address_id(ctx, addrs)
+    yield _thinking(f"Picked address `{addr_id}` → `food.search_restaurants`.")
+    sr_any = call_tool("food", "search_restaurants", {"addressId": addr_id})
+    sr = sr_any if isinstance(sr_any, dict) else {}
+    yield {"type": "tool", "payload": _sse_tool("food", "/food", "search_restaurants", {"addressId": addr_id}, sr_any)}
+
+    feed = _compose_food_discovery_feed(addrs, sr)
+    n = len(sr.get("restaurants") or [])
+    reply = f"Showing {n} restaurant options near your Pune pin."
+    yield {"type": "feed", "payload": {"items": feed}}
+    yield {"type": "assistant", "payload": {"text": reply}}
+    yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": feed}}
+
+
+def run_food_pizza_order(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[str, Any], None, None]:
+    yield _thinking("Food delivery flow: addresses → restaurants → Domino's-ish menu → cart → place_order.")
+
+    addrs_any = call_tool("food", "get_addresses", {})
+    addrs = addrs_any if isinstance(addrs_any, dict) else {}
+    yield {"type": "tool", "payload": _sse_tool("food", "/food", "get_addresses", {}, addrs_any)}
+    addr_id = _pick_address_id(ctx, addrs)
+
+    sr_any = call_tool("food", "search_restaurants", {"addressId": addr_id})
+    sr = sr_any if isinstance(sr_any, dict) else {}
+    yield {"type": "tool", "payload": _sse_tool("food", "/food", "search_restaurants", {"addressId": addr_id}, sr_any)}
+
+    rid = _pick_pizza_restaurant(sr)
+    if not rid:
+        reply = "No restaurants matched the pizza heuristic in this stub run."
+        yield {"type": "assistant", "payload": {"text": reply}}
+        yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": []}}
+        return
+
+    menu_any = call_tool("food", "get_menu", {"restaurantId": rid})
+    yield {"type": "tool", "payload": _sse_tool("food", "/food", "get_menu", {"restaurantId": rid}, menu_any)}
+
+    cart_params = {
+        "requestId": uuid_session,
+        "restaurantId": rid,
+        "lines": [{"item_id": "dom_mar_med", "qty": 1}],
+    }
+    cart_any = call_tool("food", "add_to_cart", cart_params)
+    cart = cart_any if isinstance(cart_any, dict) else {}
+    yield {"type": "tool", "payload": _sse_tool("food", "/food", "add_to_cart", cart_params, cart_any)}
+    cid = str(cart.get("cart_id", ""))
+
+    order_any = call_tool("food", "place_order", {"cart_id": cid, "payment_mode": "COD"})
+    order = order_any if isinstance(order_any, dict) else {}
+    yield {"type": "tool", "payload": _sse_tool("food", "/food", "place_order", {"cart_id": cid}, order_any)}
+
+    feed_rest = _compose_food_discovery_feed(addrs, sr)
+    feed = feed_rest[: min(8, len(feed_rest))]
+    feed.append(
+        {
+            "type": "order_confirmation",
+            "title": order.get("message") or "Order placed",
+            "subtitle": f"Order {order.get('order_id')} · ETA ~{order.get('eta_mins')} min · COD mock",
+            "meta": order,
+        }
+    )
+    reply = str(order.get("message")) if order.get("message") else "Pizza checkout complete (mock)."
+    yield {"type": "feed", "payload": {"items": feed}}
+    yield {"type": "assistant", "payload": {"text": reply}}
+    yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": feed}}
+
+
+def run_instamart(uuid_session: str, message: str) -> Generator[dict[str, Any], None, None]:
+    q = "".join(ch for ch in message if ch.isprintable()).strip().lower()
+    snippet = ""
+    for token in ("milk", "bread", "eggs", ""):
+        if token and token in q:
+            snippet = token
+            break
+    yield _thinking("`im.search_products` for quick grocery staples.")
+    prods = call_tool("im", "search_products", {"query": snippet or None})
+    yield {"type": "tool", "payload": _sse_tool("im", "/im", "search_products", {"query": snippet or None}, prods)}
+    plist = []
+    if isinstance(prods, dict):
+        plist = prods.get("products") or []
+
+    picks = plist[: min(12, len(plist))]
+    line_items: list[dict[str, Any]] = []
+    pid_milk = "im_milk_f"
+    pid_bread = "im_bread"
+    if any(p["product_id"] == pid_milk for p in picks):
+        line_items.append({"product_id": pid_milk, "qty": 1})
+    elif picks:
+        line_items.append({"product_id": picks[0]["product_id"], "qty": 1})
+    if any(p["product_id"] == pid_bread for p in picks):
+        line_items.append({"product_id": pid_bread, "qty": 1})
+
+    yield _thinking("`im.add_to_cart` assembling a basket.")
+    cart = call_tool(
+        "im",
+        "add_to_cart",
+        {"request_id": uuid_session, "items": line_items},
+    )
+    yield {"type": "tool", "payload": _sse_tool("im", "/im", "add_to_cart", {"items": line_items}, cart)}
+    cid = ""
+    if isinstance(cart, dict):
+        cid = str(cart.get("cart_id", ""))
+
+    out = call_tool("im", "checkout", {"cart_id": cid})
+    yield {"type": "tool", "payload": _sse_tool("im", "/im", "checkout", {"cart_id": cid}, out)}
+
+    feed: list[dict[str, Any]] = []
+    for p in plist[:8]:
+        feed.append(
+            {
+                "type": "instamart",
+                "title": p.get("name"),
+                "subtitle": f"₹{p.get('price_inr')} · {p.get('category', '')}",
+                "meta": {"product_id": p.get("product_id")},
+            }
+        )
+    if isinstance(out, dict):
+        feed.append(
+            {
+                "type": "instamart_order",
+                "title": out.get("message", "Groceries on the way"),
+                "subtitle": f"ETA ~{out.get('eta_mins')} min · {out.get('order_id')}",
+                "meta": out,
+            }
+        )
+
+    reply = str(out.get("message")) if isinstance(out, dict) else "Checkout complete."
+    yield {"type": "feed", "payload": {"items": feed}}
+    yield {"type": "assistant", "payload": {"text": reply}}
+    yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": feed}}
+
+
+def run_dineout(ctx: dict[str, Any]) -> Generator[dict[str, Any], None, None]:
+    yield _thinking("Dine-out path: listings → slots → booked table.")
+
+    lst = call_tool("dineout", "search_restaurants", {})
+    yield {"type": "tool", "payload": _sse_tool("dineout", "/dineout", "search_restaurants", {}, lst)}
+    rest_id = ""
+    if isinstance(lst, dict) and lst.get("restaurants"):
+        rest_id = str(lst["restaurants"][0]["restaurant_id"])
+
+    party = ctx.get("party_size", ctx.get("partySize", 4))
+    avail = call_tool(
+        "dineout",
+        "check_availability",
+        {
+            "restaurantId": rest_id or "do_bk_801",
+            "partySize": party,
+            "date": ctx.get("date", "2026-05-10"),
+        },
+    )
+    yield {
+        "type": "tool",
+        "payload": _sse_tool(
+            "dineout",
+            "/dineout",
+            "check_availability",
+            {"restaurantId": rest_id, "partySize": party},
+            avail,
+        ),
+    }
+    slot = ""
+    if isinstance(avail, dict):
+        slots = avail.get("slots") or []
+        slot = slots[0] if slots else "19:00"
+
+    bk = call_tool(
+        "dineout",
+        "book_table",
+        {
+            "restaurantId": rest_id or "do_bk_801",
+            "partySize": party,
+            "slot": slot,
+        },
+    )
+    yield {"type": "tool", "payload": _sse_tool("dineout", "/dineout", "book_table", {"slot": slot}, bk)}
+
+    feed: list[dict[str, Any]] = []
+    if isinstance(lst, dict):
+        for r in lst.get("restaurants") or []:
+            feed.append(
                 {
-                    "type": "dineout_slot",
-                    "title": f"Table window · {s}",
-                    "subtitle": "Synthetic availability — demo only",
-                    "meta": {"time": s},
+                    "type": "dineout",
+                    "title": r.get("name"),
+                    "subtitle": f"★ {r.get('rating')} · {', '.join(r.get('cuisines') or [])}",
+                    "meta": {"restaurant_id": r.get("restaurant_id")},
                 }
             )
-        reply_parts.append("Dineout availability (mock) — see suggested slots in the feed.")
+    if isinstance(avail, dict):
+        feed.append(
+            {
+                "type": "dineout_slot_pack",
+                "title": "Tonight availability",
+                "subtitle": ", ".join(avail.get("slots") or []),
+                "meta": avail,
+            }
+        )
+    if isinstance(bk, dict):
+        feed.append(
+            {
+                "type": "booking",
+                "title": bk.get("confirmation_message", "Booked"),
+                "subtitle": bk.get("booking_id"),
+                "meta": bk,
+            }
+        )
 
-    assistant_reply = " ".join(reply_parts) if reply_parts else "Processed your request with the mock Swiggy MCP layer."
-    steps.append("Done — stream closed after this turn.")
-
-    return {
-        "thinking_steps": steps,
-        "feed_items": feed_items,
-        "assistant_reply": assistant_reply,
-    }
-
-
-def build_graph() -> StateGraph:
-    g = StateGraph(AgentState)
-    g.add_node("analyze", analyze_context)
-    g.add_node("call_tools", call_tools)
-    g.add_node("synthesize", synthesize)
-    g.set_entry_point("analyze")
-    g.add_edge("analyze", "call_tools")
-    g.add_edge("call_tools", "synthesize")
-    g.add_edge("synthesize", END)
-    return g
-
-
-_compiled = None
+    reply = str(bk.get("confirmation_message")) if isinstance(bk, dict) else "Booking saved."
+    yield {"type": "feed", "payload": {"items": feed}}
+    yield {"type": "assistant", "payload": {"text": reply}}
+    yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": feed}}
 
 
-def get_compiled_graph():
-    global _compiled
-    if _compiled is None:
-        _compiled = build_graph().compile()
-    return _compiled
-
-
-def _merge_agent_state(base: AgentState, patch: dict[str, Any]) -> AgentState:
-    out = dict(base)
-    for k, v in patch.items():
-        if k == "thinking_steps" and isinstance(v, list):
-            out["thinking_steps"] = list(out.get("thinking_steps") or []) + v
-        elif k == "rpc_logs" and isinstance(v, list):
-            out["rpc_logs"] = list(out.get("rpc_logs") or []) + v
-        else:
-            out[k] = v  # type: ignore[assignment]
-    return out  # type: ignore[return-value]
+def _error_bundle(message: str) -> Generator[dict[str, Any], None, None]:
+    feed = [{"type": "error", "title": "Local MCP mock", "subtitle": message, "meta": {}}]
+    yield {"type": "thinking", "payload": {"text": "Caught a tool error."}}
+    yield {"type": "feed", "payload": {"items": feed}}
+    yield {"type": "assistant", "payload": {"text": "Something blocked the MCP chain — check Developer Mode traces."}}
+    yield {"type": "done", "payload": {"assistant_reply": None, "feed_items": feed}}
 
 
 def run_agent_stream(user_message: str, context: dict[str, Any] | None):
-    """Yield event dicts: thinking | tool | feed | assistant | done.
+    """Yield SSE events: thinking | tool | feed | assistant | done."""
+    ctx = context or {}
+    sid = str(uuid.uuid4())
 
-    Executed sequentially (same edges as LangGraph) for reliable SSE without
-    relying on graph.stream() callback internals across langchain versions.
-    """
-    state: AgentState = {
-        "user_message": user_message,
-        "context": context or {},
-        "thinking_steps": [],
-        "rpc_logs": [],
-    }
-
-    a = analyze_context(state)
-    state = _merge_agent_state(state, a)
-    for text in a.get("thinking_steps", []):
-        yield {"type": "thinking", "payload": {"text": text}}
-
-    b = call_tools(state)
-    state = _merge_agent_state(state, b)
-    for text in b.get("thinking_steps", []):
-        yield {"type": "thinking", "payload": {"text": text}}
-    for log_entry in b.get("rpc_logs", []):
-        yield {"type": "tool", "payload": log_entry}
-
-    c = synthesize(state)
-    state = _merge_agent_state(state, c)
-    for text in c.get("thinking_steps", []):
-        yield {"type": "thinking", "payload": {"text": text}}
-    if "feed_items" in c:
-        yield {"type": "feed", "payload": {"items": c["feed_items"]}}
-    if "assistant_reply" in c:
-        yield {"type": "assistant", "payload": {"text": c["assistant_reply"]}}
-
-    yield {
-        "type": "done",
-        "payload": {
-            "assistant_reply": state.get("assistant_reply"),
-            "feed_items": state.get("feed_items") or [],
-        },
-    }
+    vertical = _detect_vertical(user_message, ctx)
+    try:
+        if vertical == "food":
+            gen = (
+                run_food_pizza_order(sid, ctx)
+                if _is_food_pizza_flow(user_message)
+                else run_food_browse(sid, ctx)
+            )
+        elif vertical == "im":
+            gen = run_instamart(sid, user_message)
+        else:
+            gen = run_dineout(ctx)
+        yield from gen
+    except LocalMCPError as e:
+        yield from _error_bundle(str(e))

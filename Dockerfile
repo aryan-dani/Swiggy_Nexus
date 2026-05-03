@@ -8,6 +8,8 @@ ENV PYTHONPATH=/app
 COPY backend/requirements.txt /app/backend/requirements.txt
 RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 
+COPY mcp_server /app/mcp_server
+COPY mock_data /app/mock_data
 COPY backend /app/backend
 
 EXPOSE 8000
