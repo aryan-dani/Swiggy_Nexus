@@ -44,7 +44,7 @@ export type AppSidebarProps = {
   onRecent?: () => void;
   devMode: boolean;
   onDevModeChange: (v: boolean) => void;
-  onNavigate?: (tab?: string) => void;
+  onNavigate?: (tab: string) => void;
 };
 
 function SidebarLink({
@@ -86,7 +86,11 @@ export function AppSidebar({
   onDevModeChange,
   onNavigate,
 }: AppSidebarProps) {
-  const close = (tab?: string) => onNavigate?.(tab);
+  const close = (tab?: string | React.MouseEvent | unknown) => {
+    if (typeof tab === "string") {
+      onNavigate?.(tab);
+    }
+  };
 
   return (
     <motion.div
