@@ -6,12 +6,17 @@ import json
 import os
 from typing import Any
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from backend.agent import run_agent_stream
+# Load environment variables from backend/.env file (if present)
+_env_path = os.path.join(os.path.dirname(__file__), '.env')
+load_dotenv(dotenv_path=_env_path)
+
+from backend.llm_orchestrator import run_llm_agent as run_agent_stream
 from mcp_server.http_routes import router as mock_mcp_router
 from backend.sidebar_demo import (
     analytics_snapshot,

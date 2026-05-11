@@ -44,7 +44,7 @@ export type AppSidebarProps = {
   onRecent?: () => void;
   devMode: boolean;
   onDevModeChange: (v: boolean) => void;
-  onNavigate?: () => void;
+  onNavigate?: (tab?: string) => void;
 };
 
 function SidebarLink({
@@ -86,7 +86,7 @@ export function AppSidebar({
   onDevModeChange,
   onNavigate,
 }: AppSidebarProps) {
-  const close = () => onNavigate?.();
+  const close = (tab?: string) => onNavigate?.(tab);
 
   return (
     <motion.div
@@ -102,14 +102,14 @@ export function AppSidebar({
         <NexusLockup />
       </motion.div>
 
-      <div className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-2 overflow-x-hidden overflow-y-auto pb-1 no-scrollbar">
+      <div className="neo-scrollbar flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-2 overflow-x-hidden overflow-y-auto pb-1">
         <motion.button
           type="button"
           variants={fadeUp}
           whileHover={sidebarNeoHover}
           whileTap={sidebarNeoTap}
           onClick={async () => {
-            close();
+            close("chat");
             try {
               const r = await postSidebarNewChat();
               nexusToast(`${r.message} · #${r.session_number}`);
@@ -133,7 +133,7 @@ export function AppSidebar({
             active
             onClick={async () => {
               onRecent?.();
-              close();
+              close("library");
               try {
                 const { pins } = await fetchSidebarLibrary();
                 nexusToast(`${pins.length} pin(s): ${pins.map((p) => p.title).join(" · ")}`);
@@ -146,7 +146,7 @@ export function AppSidebar({
             icon={<BarChart2 size={18} />}
             label="Analytics"
             onClick={async () => {
-              close();
+              close("analytics");
               try {
                 const a = await fetchSidebarAnalytics();
                 nexusToast(
@@ -161,7 +161,7 @@ export function AppSidebar({
             icon={<History size={18} />}
             label="Archive"
             onClick={async () => {
-              close();
+              close("archive");
               try {
                 const { items } = await fetchSidebarArchive();
                 nexusToast(`Archive: ${items.length} entr(y/ies) on demo backend.`);

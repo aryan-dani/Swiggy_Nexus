@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 export type NexusSignalsBarProps = {
   settings: NexusDemoSettings;
   onSettingsChange: (next: NexusDemoSettings) => void;
+  onReset?: () => void;
   className?: string;
 };
 
@@ -27,6 +28,7 @@ const chipOff =
 export function NexusSignalsBar({
   settings,
   onSettingsChange,
+  onReset,
   className,
 }: NexusSignalsBarProps) {
   const patch = useCallback(
@@ -44,8 +46,11 @@ export function NexusSignalsBar({
         { reviewerScenario: id },
         id ? `Scenario: ${label}` : "Cleared scenario preset"
       );
+      if (!id) {
+        onReset?.();
+      }
     },
-    [patch]
+    [patch, onReset]
   );
 
   return (
@@ -189,9 +194,19 @@ export function NexusSignalsBar({
             <Trash2 className="h-3.5 w-3.5" aria-hidden />
           </motion.button>
         </div>
-        <p className="mt-2 font-mono text-[10px] text-slate-500">
-          Deadlock demo uses party {settings.deadlockPartySize} · ₹
-          {settings.deadlockBudgetInr}/head cap · {settings.deadlockCity}. Adjust in Settings.
+        <p className="mt-2 min-h-8 font-mono text-[10px] text-slate-500">
+          {settings.reviewerScenario === "deadlock" && (
+            <>Deadlock demo uses party {settings.deadlockPartySize} · ₹{settings.deadlockBudgetInr}/head cap · {settings.deadlockCity}. Adjust in Settings.</>
+          )}
+          {settings.reviewerScenario === "flowstate" && (
+            <>Flow-state fueler assumes deep work block. Biases towards quick delivery.</>
+          )}
+          {settings.reviewerScenario === "zerowaste" && (
+            <>Zero-waste focuses on Instamart leftovers or healthy meal substitutions.</>
+          )}
+          {!settings.reviewerScenario && (
+            <>Select a story preset to inject mock context.</>
+          )}
         </p>
       </div>
     </motion.div>

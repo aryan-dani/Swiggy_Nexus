@@ -165,7 +165,7 @@ export default function McpFeed({ items }: McpFeedProps) {
 
             <div className="relative -mx-1 min-w-0 pl-1">
               <motion.div
-                className="flex snap-x snap-mandatory gap-5 overflow-x-auto overflow-y-visible px-1 pb-8 pt-2 [scrollbar-width:thin] md:gap-6 md:pb-10"
+                className="neo-scrollbar flex snap-x snap-mandatory gap-5 overflow-x-auto overflow-y-visible px-1 pb-8 pt-2 md:gap-6 md:pb-10"
                 variants={staggerContainer}
                 initial="hidden"
                 animate="show"

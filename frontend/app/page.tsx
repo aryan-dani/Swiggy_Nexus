@@ -21,6 +21,7 @@ import { fadeUp, neoSpring, staggerContainer } from "@/lib/motion";
 export default function Home() {
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [sessionId, setSessionId] = useState(0);
+  const [activeTab, setActiveTab] = useState<string>("chat");
   const [demo, setDemo] = useState<NexusDemoSettings>(() => DEMO_SETTINGS_DEFAULTS);
 
   useEffect(() => {
@@ -42,6 +43,7 @@ export default function Home() {
   const handleNewChat = useCallback(() => {
     setFeedItems([]);
     setSessionId((s) => s + 1);
+    setActiveTab("chat");
   }, []);
 
   const scrollChatToTop = useCallback(() => {
@@ -59,6 +61,7 @@ export default function Home() {
     onRecent: scrollChatToTop,
     devMode: demo.devMode,
     onDevModeChange: setDevModePersist,
+    onNavigate: setActiveTab,
   };
 
   return (
@@ -82,28 +85,53 @@ export default function Home() {
             initial="hidden"
             animate="show"
           >
-            <motion.section
-              variants={fadeUp}
-              className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 lg:max-w-xl xl:max-w-2xl"
-            >
-              <NexusSignalsBar
-                settings={demo}
-                onSettingsChange={handleDemoPatch}
-              />
-              <ChatInterface
-                key={sessionId}
-                onFeedItems={setFeedItems}
-                devMode={demo.devMode}
-                sessionHints={demo.sessionHints}
-                chatContext={chatContext}
-              />
-            </motion.section>
-            <motion.section
-              variants={fadeUp}
-              className="flex min-h-0 min-w-0 flex-1 flex-col border-t-2 border-black pt-6 lg:min-h-[70vh] lg:border-l-2 lg:border-t-0 lg:pl-8 lg:pt-0"
-            >
-              <McpFeed items={feedItems} />
-            </motion.section>
+            {activeTab === "chat" ? (
+              <>
+                <motion.section
+                  variants={fadeUp}
+                  className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 lg:max-w-xl xl:max-w-2xl"
+                >
+                  <NexusSignalsBar
+                    settings={demo}
+                    onSettingsChange={handleDemoPatch}
+                    onReset={handleNewChat}
+                  />
+                  <ChatInterface
+                    key={sessionId}
+                    onFeedItems={setFeedItems}
+                    devMode={demo.devMode}
+                    sessionHints={demo.sessionHints}
+                    chatContext={chatContext}
+                  />
+                </motion.section>
+                <motion.section
+                  variants={fadeUp}
+                  className="flex min-h-0 min-w-0 flex-1 flex-col border-t-2 border-black pt-6 lg:min-h-[70vh] lg:border-l-2 lg:border-t-0 lg:pl-8 lg:pt-0"
+                >
+                  <McpFeed items={feedItems} />
+                </motion.section>
+              </>
+            ) : (
+              <motion.div
+                variants={fadeUp}
+                className="flex w-full flex-col items-center justify-center rounded-xl border-4 border-black bg-slate-50 p-12 text-center shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]"
+              >
+                <h2 className="mb-4 font-display text-4xl font-black uppercase tracking-tight text-black">
+                  Coming Soon
+                </h2>
+                <p className="max-w-md font-sans text-lg font-medium text-slate-600">
+                  The <strong className="capitalize text-indigo-600">{activeTab}</strong> view is not fully implemented in this local demo.
+                </p>
+                <motion.button
+                  whileHover={{ scale: 1.05, boxShadow: "4px 4px 0px 0px rgba(0,0,0,1)" }}
+                  whileTap={{ scale: 0.95, boxShadow: "2px 2px 0px 0px rgba(0,0,0,1)" }}
+                  onClick={handleNewChat}
+                  className="mt-8 border-2 border-black bg-neo-mint px-6 py-3 font-display text-sm font-black uppercase tracking-widest text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-colors hover:bg-emerald-300"
+                >
+                  Return to Chat
+                </motion.button>
+              </motion.div>
+            )}
           </motion.main>
         </div>
       </div>

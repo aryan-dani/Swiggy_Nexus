@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 const MotionLink = motion.create(Link);
 
 export type DashboardHeaderProps = {
-  sidebarProps: Omit<AppSidebarProps, "className" | "onNavigate">;
+  sidebarProps: AppSidebarProps;
   className?: string;
 };
 
@@ -66,7 +66,12 @@ export function DashboardHeader({
               <AppSidebar
                 {...sidebarProps}
                 className="h-full"
-                onNavigate={() => setOpen(false)}
+                onNavigate={(tab?: string) => {
+                  setOpen(false);
+                  if (tab && sidebarProps.onNavigate) {
+                    sidebarProps.onNavigate(tab);
+                  }
+                }}
               />
             </SheetContent>
           </Sheet>

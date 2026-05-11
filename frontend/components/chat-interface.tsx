@@ -4,7 +4,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowUp,
   Loader2,
-  Mic,
   PlusCircle,
   Terminal,
 } from "lucide-react";
@@ -104,7 +103,7 @@ export default function ChatInterface({
     <div className="flex h-full min-h-[65vh] flex-col gap-4">
       <div
         id="nexus-chat-scroll"
-        className="min-h-0 flex-1 space-y-6 overflow-y-auto pr-1 no-scrollbar"
+        className="neo-scrollbar min-h-0 flex-1 space-y-6 overflow-y-auto pr-2"
       >
         {msgs.length === 0 && (
           <motion.p
@@ -303,12 +302,14 @@ export default function ChatInterface({
           <motion.button
             type="button"
             className="text-slate-400 hover:text-black"
+            aria-label="Attach file"
             whileHover={{ scale: 1.06, transition: neoSpring }}
             whileTap={{ scale: 0.96 }}
           >
             <PlusCircle size={24} aria-hidden />
           </motion.button>
           <input
+            autoFocus
             className="min-w-0 flex-1 border-none bg-transparent py-3 font-display text-sm font-bold text-black outline-none placeholder:text-slate-400"
             placeholder="Ask Nexus…"
             value={input}
@@ -321,15 +322,6 @@ export default function ChatInterface({
               }
             }}
           />
-          <motion.button
-            type="button"
-            className="text-slate-400 hover:text-black"
-            aria-label="Voice (demo)"
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <Mic size={24} />
-          </motion.button>
           <motion.button
             type="submit"
             disabled={busy || !input.trim()}
@@ -352,7 +344,15 @@ export default function ChatInterface({
               "hover:bg-[#5248e6] disabled:cursor-not-allowed disabled:opacity-50"
             )}
           >
-            Send <ArrowUp size={16} />
+            {busy ? (
+              <>
+                Sending... <Loader2 className="animate-spin" size={16} />
+              </>
+            ) : (
+              <>
+                Send <ArrowUp size={16} />
+              </>
+            )}
           </motion.button>
         </motion.form>
         <motion.p

@@ -1,8 +1,8 @@
 node_modules/
 .next/
 frontend/.turbo/
-venv/
-.venv/
+backend/venv/
+backend/.venv/
 __pycache__/
 *.py[cod]
 build/
