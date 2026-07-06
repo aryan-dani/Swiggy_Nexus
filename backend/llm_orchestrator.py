@@ -195,18 +195,36 @@ def _sse_tool(server_key: str, http_path: str, method: str, params: dict[str, An
         "demo_note": "local_mock_mcp",
     }
 
+REVIEWER_SCENARIOS = ("chrono_host", "deadlock", "flowstate", "zerowaste", "sentiment", "dialectic")
+
+SCENARIO_PROMPTS: dict[str, str] = {
+    "chrono_host": (
+        "Chrono-Host: plan a multi-vertical evening (Dineout table + Instamart party supplies + Food dessert). "
+        "Use parallel tool calls across food, im, and dineout. Stage carts; do not auto-place without user confirm."
+    ),
+    "deadlock": "Social deadlock breaker: find a dinner compromise for a picky group using Dineout search and availability.",
+    "flowstate": "Flow-state fueler: quick Instamart delivery for deep-work snacks and coffee.",
+    "zerowaste": "Zero-waste meal: search pantry gaps on Instamart for a recipe, minimize waste.",
+    "sentiment": "Sentiment thermostat: suggest comfort food options; stage carts but never auto-checkout.",
+    "dialectic": "Dialectic dinner: search restaurants for a debate-night meal pick.",
+}
+
+
 def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generator[dict[str, Any], None, None]:
     ctx = context or {}
-    # Reviewer scenarios use deterministic agent (rich multi-tool demos).
-    if ctx.get("scenario") in ("chrono_host", "deadlock", "flowstate", "zerowaste", "sentiment", "dialectic"):
+    api_key = os.environ.get("GROQ_API_KEY", "").strip()
+
+    # Rich scripted demos only when no LLM is configured.
+    if not api_key and ctx.get("scenario") in REVIEWER_SCENARIOS:
         from backend.agent import run_agent_stream as deterministic
+
         yield from deterministic(user_message, ctx)
         return
 
-    api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
         yield {"type": "thinking", "payload": {"text": "GROQ_API_KEY missing. Falling back to deterministic mode."}}
         from backend.agent import run_agent_stream as fallback
+
         yield from fallback(user_message, context)
         return
 
@@ -223,21 +241,37 @@ def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generato
 
     client = Groq(api_key=api_key)
     session_id = str(uuid.uuid4())
-    
-    yield {"type": "thinking", "payload": {"text": "Thinking via LLM Orchestrator..."}}
-    
+
+    yield {
+        "type": "thinking",
+        "payload": {"text": f"Groq {os.environ.get('GROQ_MODEL', 'llama-3.3-70b-versatile')} · agentic MCP tool loop"},
+    }
+
     prefs = get_user_preferences()
     prefs_str = json.dumps(prefs) if prefs else "None"
-    
+
+    scenario = ctx.get("scenario")
+    scenario_hint = ""
+    if isinstance(scenario, str) and scenario in SCENARIO_PROMPTS:
+        scenario_hint = f"\nActive reviewer scenario ({scenario}): {SCENARIO_PROMPTS[scenario]}"
+
+    party = ctx.get("partySize")
+    event = ctx.get("event")
+    if not party and isinstance(event, dict):
+        party = event.get("guests")
+    if party:
+        scenario_hint += f"\nParty size: {party}."
+
     system_prompt = (
         "You are Swiggy Nexus, an autonomous agentic copilot. "
         "You handle cross-vertical commerce requests (Food delivery, Instamart groceries, and Dineout reservations).\n"
-        f"User Preferences: {prefs_str}\n"
+        f"User Preferences: {prefs_str}{scenario_hint}\n"
         "1. Start by getting context, e.g., 'food_get_addresses' if you need a delivery location.\n"
         "2. To order food, you MUST: find restaurants -> get menu -> add_to_cart -> place_order.\n"
         "3. To order groceries, you MUST: search products -> add_to_cart -> checkout.\n"
         "4. To book Dineout, you MUST: search restaurants -> check_availability -> book_table.\n"
-        "5. Parallel execution: You can invoke tools in parallel to plan a party (e.g., book table and order groceries together)."
+        "5. Parallel execution: invoke multiple tools in one turn when planning events (table + groceries + dessert).\n"
+        "6. Stream tool calls visibly — prefer several MCP tools over a short reply."
     )
     
     messages = [
@@ -250,10 +284,10 @@ def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generato
     while True:
         try:
             resp = client.chat.completions.create(
-                model="mixtral-8x7b-32768",
+                model=os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
                 messages=messages,
                 tools=TOOLS,
-                tool_choice="auto"
+                tool_choice="auto",
             )
         except Exception as e:
             yield {"type": "assistant", "payload": {"text": f"LLM error: {str(e)}"}}
@@ -287,11 +321,14 @@ def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generato
             if "request_id" in args:
                 args["request_id"] = session_id
                 
-            yield {"type": "thinking", "payload": {"text": f"Calling {name}..."}}
-            
+            yield {"type": "thinking", "payload": {"text": f"Executor · {name}"}}
+
             try:
                 data = call_tool(vertical, method, args)
-                yield {"type": "tool", "payload": _sse_tool(vertical, f"/{vertical}", method, args, data)}
+                tool_payload = _sse_tool(vertical, f"/{vertical}", method, args, data)
+                tool_payload["method"] = name
+                tool_payload["phase"] = "Executor"
+                yield {"type": "tool", "payload": tool_payload}
                 
                 # Render logic (feed mapping)
                 if method == "search_restaurants" and "restaurants" in data:
@@ -336,3 +373,6 @@ def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generato
                     "tool_call_id": tool_call.id,
                     "content": json.dumps({"error": e.payload})
                 })
+
+        if feed_items:
+            yield {"type": "feed", "payload": {"items": list(feed_items)}}

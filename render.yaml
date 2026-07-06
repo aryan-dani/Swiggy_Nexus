@@ -16,8 +16,6 @@ services:
         value: http://localhost:3000,http://127.0.0.1:3000
       - key: CORS_ORIGIN_REGEX
         value: https://.*\.(onrender|vercel)\.app
-      - key: GROQ_API_KEY
-        sync: false
 
   - type: web
     name: swiggy-nexus-web
@@ -36,4 +34,4 @@ services:
           type: web
           property: host
       - key: NEXT_PUBLIC_GROQ_ENABLED
-        sync: false
+        value: "true"

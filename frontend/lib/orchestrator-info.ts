@@ -25,8 +25,8 @@ export function getOrchestratorInfo(): {
     return {
       mode: "groq",
       label: "Groq LLM + MCP tools",
-      detail: "FastAPI orchestrator with mixtral-8x7b-32768 tool-calling (set GROQ_API_KEY).",
-      llmModel: "mixtral-8x7b-32768",
+      detail: "FastAPI orchestrator with llama-3.3-70b-versatile tool-calling (GROQ_API_KEY on Render).",
+      llmModel: "llama-3.3-70b-versatile",
     };
   }
 
