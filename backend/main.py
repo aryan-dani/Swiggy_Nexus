@@ -28,11 +28,21 @@ from backend.sidebar_demo import (
 )
 
 DEFAULT_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000"
+DEFAULT_ORIGIN_REGEX = r"https://.*\.(onrender|vercel)\.app"
 
 
 def _parse_origins() -> list[str]:
     raw = os.environ.get("FRONTEND_ORIGIN") or os.environ.get("CORS_ORIGINS") or DEFAULT_ORIGINS
     return [o.strip() for o in raw.split(",") if o.strip()]
+
+
+def _parse_origin_regex() -> str | None:
+    raw = os.environ.get("CORS_ORIGIN_REGEX", "").strip()
+    if raw:
+        return raw
+    if os.environ.get("RENDER") == "true":
+        return DEFAULT_ORIGIN_REGEX
+    return None
 
 
 app = FastAPI(title="Swiggy Nexus API", version="0.1.0")
@@ -42,6 +52,7 @@ app.include_router(mock_mcp_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_parse_origins(),
+    allow_origin_regex=_parse_origin_regex(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -59,7 +70,11 @@ class DevModeBody(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "swiggy-nexus-backend"}
+    return {
+        "status": "ok",
+        "service": "swiggy-nexus-backend",
+        "groq_configured": bool(os.environ.get("GROQ_API_KEY", "").strip()),
+    }
 
 
 @app.get("/api/sidebar/summary")

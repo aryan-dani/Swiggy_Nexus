@@ -1,3 +1,5 @@
+import { normalizeApiBase } from "@/lib/api";
+
 /** How Nexus routes chat — shown in the command center for reviewers. */
 export type OrchestratorMode = "deterministic" | "groq" | "fastapi-deterministic";
 
@@ -7,7 +9,7 @@ export function getOrchestratorInfo(): {
   detail: string;
   llmModel: string | null;
 } {
-  const api = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
+  const api = normalizeApiBase(process.env.NEXT_PUBLIC_API_URL);
   const groqHint = process.env.NEXT_PUBLIC_GROQ_ENABLED === "true";
 
   if (!api) {

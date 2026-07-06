@@ -1,0 +1,39 @@
+# Render Blueprint — connect this repo and click "Apply".
+# Docs: docs/deploy-render.md
+
+services:
+  - type: web
+    name: swiggy-nexus-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHONPATH
+        value: /app
+      - key: CORS_ORIGINS
+        value: http://localhost:3000,http://127.0.0.1:3000
+      - key: CORS_ORIGIN_REGEX
+        value: https://.*\.(onrender|vercel)\.app
+      - key: GROQ_API_KEY
+        sync: false
+
+  - type: web
+    name: swiggy-nexus-web
+    runtime: node
+    rootDir: frontend
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          name: swiggy-nexus-api
+          type: web
+          property: host
+      - key: NEXT_PUBLIC_GROQ_ENABLED
+        sync: false

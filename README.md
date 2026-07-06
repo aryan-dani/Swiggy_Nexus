@@ -74,7 +74,20 @@ docker run -p 8000:8000 -e FRONTEND_ORIGIN=http://localhost:3000 swiggy-nexus-ap
 
 [`Procfile`](Procfile) runs the API with `uvicorn` (adjust `PORT` as your host provides).
 
-## Deploy on Vercel (demo)
+## Deploy on Render (recommended — full stack)
+
+**One-click:** push to GitHub, then [Render → New Blueprint](https://dashboard.render.com) → connect this repo → **Apply**.
+
+The root [`render.yaml`](render.yaml) provisions:
+
+- **`swiggy-nexus-api`** — FastAPI + mock MCP (Docker)
+- **`swiggy-nexus-web`** — Next.js UI (auto-wired to the API)
+
+Full walkthrough: [**docs/deploy-render.md**](docs/deploy-render.md)
+
+Optional: add `GROQ_API_KEY` on the API service and `NEXT_PUBLIC_GROQ_ENABLED=true` on the web service for LLM mode. Skip both for the deterministic WOW demo.
+
+## Deploy on Vercel (frontend only)
 
 1. Push this repo to GitHub/GitLab/Bitbucket.
 2. In [Vercel](https://vercel.com) → **New Project** → import the repo.

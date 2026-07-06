@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 
+import { normalizeApiBase } from "@/lib/api";
 import { invokeMockMcp, type McpVertical } from "@/lib/mcp-mock/dispatcher";
 
 function backendBase(): string | null {
   const raw = process.env.NEXT_PUBLIC_API_URL ?? process.env.MCP_BACKEND_URL;
-  if (!raw) return null;
-  return raw.replace(/\/$/, "");
+  const base = normalizeApiBase(raw);
+  return base || null;
 }
 
 export async function POST(

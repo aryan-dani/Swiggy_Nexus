@@ -13,14 +13,22 @@ export type FeedItem = {
   meta?: Record<string, unknown>;
 };
 
+/** Normalize API base — Render Blueprint may inject hostname without `https://`. */
+export function normalizeApiBase(raw?: string): string {
+  if (raw === undefined || raw === "") return "";
+  let base = raw.trim().replace(/\/$/, "");
+  if (!/^https?:\/\//i.test(base)) {
+    base = `https://${base}`;
+  }
+  return base;
+}
+
 /**
  * Same-origin `/api/*` when unset — uses built-in Route Handlers in `app/api/` (demo / Vercel).
  * Set `NEXT_PUBLIC_API_URL` to your FastAPI base (no trailing slash) to use an external backend.
  */
 export function getApiBase(): string {
-  const raw = process.env.NEXT_PUBLIC_API_URL;
-  if (raw === undefined || raw === "") return "";
-  return raw.replace(/\/$/, "");
+  return normalizeApiBase(process.env.NEXT_PUBLIC_API_URL);
 }
 
 export async function postChatStream(

@@ -1,0 +1,17 @@
+frontend/
+node_modules/
+.git/
+.github/
+.cursor/
+**/__pycache__
+**/*.py[cod]
+**/.venv
+backend/.venv
+backend/nexus_memory.db
+docs/_swiggy_cache/
+*.md
+!backend/requirements.txt
+tests/
+scripts/
+.env*
+!.env.example
