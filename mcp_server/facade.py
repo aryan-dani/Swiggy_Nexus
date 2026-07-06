@@ -23,3 +23,4 @@ def invoke_vertical(vertical: Vertical, method: str | None, params: dict[str, An
         ok, data, err = dineout_invoke(method, params)
     if ok:
         return {"success": True, "data": data}
+    return {"success": False, "error": err or {"message": "Unknown error"}}

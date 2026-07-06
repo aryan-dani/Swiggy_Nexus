@@ -287,6 +287,75 @@ def handle_track_food_order(params: dict[str, Any]) -> tuple[bool, dict | None, 
     return True, data, None
 
 
+def handle_search_menu(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    """Cross-restaurant dish search with veg filter + pagination."""
+    simulated_latency_jitter_ms()
+    address_id = get_param(params, "addressId", "address_id") or ""
+    query = str(get_param(params, "query", "q") or "").lower().strip()
+    scoped_rid = str(get_param(params, "restaurantIdOfAddedItem", "restaurantId") or "").strip()
+    veg_filter = int(get_param(params, "vegFilter") or 0)
+    offset = int(get_param(params, "offset") or 0)
+
+    if not query:
+        return _error("VALIDATION", "query is required for search_menu")
+
+    results: list[dict[str, Any]] = []
+    restaurants_to_search = (
+        [(rid, data) for rid, data in MENU_BY_RESTAURANT.items() if rid == scoped_rid]
+        if scoped_rid
+        else list(MENU_BY_RESTAURANT.items())
+    )
+
+    for rid, menu_data in restaurants_to_search:
+        rest = next((r for r in RESTAURANTS if r["restaurant_id"] == rid), None)
+        if not rest or rest.get("availability_status") == "CLOSED":
+            continue
+        for cat in menu_data.get("categories", []):
+            for item in cat.get("items", []):
+                name_lower = item.get("name", "").lower()
+                desc_lower = item.get("description", "").lower()
+                if query not in name_lower and query not in desc_lower:
+                    continue
+                if veg_filter == 1 and not item.get("vegetarian", False):
+                    continue
+                price_inr = item.get("price_inr", 0)
+                results.append({
+                    "itemId": item["item_id"],
+                    "item_id": item["item_id"],
+                    "name": item["name"],
+                    "description": item.get("description", ""),
+                    "price_inr": price_inr,
+                    "vegetarian": item.get("vegetarian", True),
+                    "hasVariants": item.get("hasVariants", False),
+                    "hasAddons": item.get("hasAddons", False),
+                    "category": cat["name"],
+                    "restaurantId": rid,
+                    "restaurantName": rest["name"],
+                    "restaurantRating": rest["rating"],
+                    "eta_mins": pick_eta(rest),
+                    "availabilityStatus": rest.get("availability_status", "OPEN"),
+                    "shortDescription": f"{item['name']} from {rest['name']}, ₹{price_inr}",
+                    "longDescription": (
+                        f"{item.get('description', item['name'])} · "
+                        f"{rest['name']} · ★{rest['rating']} · ₹{price_inr}"
+                    ),
+                })
+
+    page_items = results[offset: offset + 10]
+    next_offset = offset + 10 if (offset + 10) < len(results) else None
+    data = {
+        "items": page_items,
+        "query": query,
+        "addressId": address_id,
+        "totalCount": len(results),
+        "nextOffset": next_offset,
+        "scopedToRestaurant": scoped_rid or None,
+        "vegFilter": veg_filter,
+    }
+    tool_log("food", "search_menu", params or {}, f"{len(page_items)} items (total {len(results)})")
+    return True, data, None
+
+
 def handle_report_error(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
     simulated_latency_jitter_ms()
     data = {
@@ -301,6 +370,7 @@ _TOOLS: dict[str, Any] = {
     "get_addresses": handle_get_addresses,
     "search_restaurants": handle_search_restaurants,
     "get_menu": handle_get_menu,
+    "search_menu": handle_search_menu,
     "add_to_cart": handle_add_to_cart,
     "get_food_cart": handle_get_food_cart,
     "flush_food_cart": handle_flush_food_cart,

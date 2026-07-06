@@ -157,6 +157,43 @@ def handle_create_cart(params: dict[str, Any]) -> tuple[bool, dict | None, dict 
     return True, data, None
 
 
+def handle_get_restaurant_details(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    """Return rich venue details — ratings, amenities, deals, timings."""
+    simulated_latency_jitter_ms()
+    rid = str(get_param(params, "restaurantId", "restaurant_id") or "").strip()
+    if not rid:
+        return _error("VALIDATION", "restaurantId is required")
+    rest = next((r for r in DINEOUT_RESTAURANTS if r["restaurant_id"] == rid), None)
+    if not rest:
+        return _error("NOT_FOUND", f"Dineout restaurant {rid} not found")
+    data = {
+        "restaurantId": rid,
+        "id": rid,
+        "name": rest["name"],
+        "rating": rest["rating"],
+        "cuisines": rest["cuisines"],
+        "area": rest["area"],
+        "costForTwo": rest.get("costForTwo", rest.get("price_for_two_inr")),
+        "availability": rest.get("availability", "AVAILABLE"),
+        "latitude": rest.get("_lat"),
+        "longitude": rest.get("_lng"),
+        "address": f"{rest['area']}, Pune",
+        "description": (
+            f"{rest['name']} is a {' & '.join(rest['cuisines'])} restaurant in {rest['area']}. "
+            f"Rated {rest['rating']}/5 with excellent ambiance and a curated menu."
+        ),
+        "amenities": ["Parking", "Air Conditioning", "Wi-Fi", "Card Accepted"],
+        "openingHours": "12:00 PM – 11:00 PM",
+        "offers": [
+            {"title": "20% off on pre-bookings", "code": "DINE20"},
+            {"title": "Complimentary welcome drink", "code": None},
+        ],
+        "images": [],
+    }
+    tool_log("dineout", "get_restaurant_details", params or {}, rest["name"])
+    return True, data, None
+
+
 def handle_report_error(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
     return True, {"reportLink": "mailto:builders@swiggy.in"}, None
 
@@ -164,6 +201,7 @@ def handle_report_error(params: dict[str, Any]) -> tuple[bool, dict | None, dict
 _TOOLS = {
     "get_saved_locations": handle_get_saved_locations,
     "search_restaurants": handle_search_restaurants,
+    "get_restaurant_details": handle_get_restaurant_details,
     "check_availability": handle_check_availability,
     "book_table": handle_book_table,
     "get_booking_status": handle_get_booking_status,

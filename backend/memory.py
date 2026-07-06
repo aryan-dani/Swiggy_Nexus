@@ -23,7 +23,7 @@ def init_db():
         """)
 
 def get_user_preferences() -> dict:
-    Preferences = {}
+    preferences = {}
     if not os.path.exists(DB_PATH):
         init_db()
     with sqlite3.connect(DB_PATH) as conn:
@@ -31,10 +31,10 @@ def get_user_preferences() -> dict:
         cursor.execute("SELECT key, value FROM user_profile")
         for k, v in cursor.fetchall():
             try:
-                Preferences[k] = json.loads(v)
-            except:
-                Preferences[k] = v
-    return Preferences
+                preferences[k] = json.loads(v)
+            except (json.JSONDecodeError, ValueError):
+                preferences[k] = v
+    return preferences
 
 def set_user_preference(key: str, value: str):
     if not os.path.exists(DB_PATH):

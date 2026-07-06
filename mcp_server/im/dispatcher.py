@@ -34,11 +34,19 @@ def handle_search_products(params: dict[str, Any]) -> tuple[bool, dict | None, d
         ] or PRODUCTS
     out = []
     for p in rows[:20]:
+        # Get price from first variant or top-level price field
+        variants = p.get("variants", [])
+        price_inr = None
+        if variants:
+            price_inr = variants[0].get("price_inr")
+        if price_inr is None:
+            price_inr = p.get("price_inr")
         out.append({
             "product_id": p["product_id"],
             "name": p["name"],
             "category": p["category"],
-            "variants": p.get("variants", []),
+            "price_inr": price_inr,
+            "variants": variants,
         })
     data = {"products": out, "query": q or None, "addressId": address_id}
     tool_log("im", "search_products", params or {}, f"{len(out)} products")
