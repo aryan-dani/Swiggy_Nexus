@@ -1,6 +1,6 @@
 "use client";
 
-import { Sparkles, Trash2, Umbrella, Users, UtensilsCrossed } from "lucide-react";
+import { Calendar, Heart, MessageSquare, Sparkles, Trash2, Umbrella, Users, UtensilsCrossed } from "lucide-react";
 import { motion } from "framer-motion";
 import { useCallback } from "react";
 
@@ -17,6 +17,7 @@ export type NexusSignalsBarProps = {
   settings: NexusDemoSettings;
   onSettingsChange: (next: NexusDemoSettings) => void;
   onReset?: () => void;
+  onSuggestPrompt?: (text: string) => void;
   className?: string;
 };
 
@@ -29,6 +30,7 @@ export function NexusSignalsBar({
   settings,
   onSettingsChange,
   onReset,
+  onSuggestPrompt,
   className,
 }: NexusSignalsBarProps) {
   const patch = useCallback(
@@ -40,17 +42,28 @@ export function NexusSignalsBar({
     [onSettingsChange]
   );
 
+const SCENARIO_PROMPTS: Partial<Record<NexusReviewerScenario, string>> = {
+  deadlock: "Break our dinner deadlock for 6 in Pune, budget ₹800 per head",
+  flowstate: "I'm deep in flow — fuel me with coffee and a protein snack on Instamart",
+  zerowaste: "Cook paneer tikka masala — only order missing pantry ingredients",
+  chrono_host: "Plan my evening for 12 guests",
+  sentiment: "Rough day — suggest comfort food without ordering yet",
+  dialectic: "Debate AI ethics — winner picks dinner cuisine",
+};
+
   const applyScenario = useCallback(
     (id: NexusReviewerScenario, label: string) => {
       patch(
         { reviewerScenario: id },
         id ? `Scenario: ${label}` : "Cleared scenario preset"
       );
+      const prompt = SCENARIO_PROMPTS[id];
+      if (prompt) onSuggestPrompt?.(prompt);
       if (!id) {
         onReset?.();
       }
     },
-    [patch, onReset]
+    [patch, onReset, onSuggestPrompt]
   );
 
   return (
@@ -130,6 +143,23 @@ export function NexusSignalsBar({
         </motion.button>
       </div>
 
+      <div className="space-y-2">
+        <label className="flex items-center gap-2 font-display text-[10px] font-black uppercase text-slate-500">
+          <Heart className="h-3.5 w-3.5" aria-hidden />
+          Mood score · {settings.signalMoodScore.toFixed(2)}
+        </label>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={Math.round(settings.signalMoodScore * 100)}
+          onChange={(e) =>
+            patch({ signalMoodScore: Number(e.target.value) / 100 }, "Mood signal updated")
+          }
+          className="w-full accent-rose-600"
+        />
+      </div>
+
       <div className="border-t-2 border-dashed border-black/15 pt-3">
         <p className="mb-2 font-display text-[10px] font-black uppercase tracking-widest text-slate-500">
           Story presets
@@ -187,6 +217,57 @@ export function NexusSignalsBar({
           <motion.button
             type="button"
             whileTap={{ scale: 0.98 }}
+            className={cn(
+              "flex items-center gap-1.5 rounded border-2 px-3 py-2 font-display text-[10px] font-black uppercase tracking-wide",
+              settings.reviewerScenario === "chrono_host" ? chipOn : chipOff
+            )}
+            onClick={() =>
+              applyScenario(
+                settings.reviewerScenario === "chrono_host" ? "" : "chrono_host",
+                "Chrono-Host evening"
+              )
+            }
+          >
+            <Calendar className="h-3.5 w-3.5" aria-hidden />
+            Chrono-Host
+          </motion.button>
+          <motion.button
+            type="button"
+            whileTap={{ scale: 0.98 }}
+            className={cn(
+              "flex items-center gap-1.5 rounded border-2 px-3 py-2 font-display text-[10px] font-black uppercase tracking-wide",
+              settings.reviewerScenario === "sentiment" ? chipOn : chipOff
+            )}
+            onClick={() =>
+              applyScenario(
+                settings.reviewerScenario === "sentiment" ? "" : "sentiment",
+                "Sentiment Thermostat"
+              )
+            }
+          >
+            <Heart className="h-3.5 w-3.5" aria-hidden />
+            Sentiment
+          </motion.button>
+          <motion.button
+            type="button"
+            whileTap={{ scale: 0.98 }}
+            className={cn(
+              "flex items-center gap-1.5 rounded border-2 px-3 py-2 font-display text-[10px] font-black uppercase tracking-wide",
+              settings.reviewerScenario === "dialectic" ? chipOn : chipOff
+            )}
+            onClick={() =>
+              applyScenario(
+                settings.reviewerScenario === "dialectic" ? "" : "dialectic",
+                "Dialectic Dinner"
+              )
+            }
+          >
+            <MessageSquare className="h-3.5 w-3.5" aria-hidden />
+            Dialectic
+          </motion.button>
+          <motion.button
+            type="button"
+            whileTap={{ scale: 0.98 }}
             className={cn("rounded border-2 px-2 py-2", chipOff)}
             title="Reset scenario"
             onClick={() => applyScenario("", "cleared")}
@@ -203,6 +284,15 @@ export function NexusSignalsBar({
           )}
           {settings.reviewerScenario === "zerowaste" && (
             <>Zero-waste focuses on Instamart leftovers or healthy meal substitutions.</>
+          )}
+          {settings.reviewerScenario === "chrono_host" && (
+            <>Chrono-Host plans dinner out + party supplies + dessert. Try: &quot;Plan my evening for 12&quot;.</>
+          )}
+          {settings.reviewerScenario === "sentiment" && (
+            <>Sentiment Thermostat stages comfort carts — never auto-places. Mood at {settings.signalMoodScore.toFixed(2)}.</>
+          )}
+          {settings.reviewerScenario === "dialectic" && (
+            <>Dialectic Dinner triggers commerce on debate rounds — use Arena buttons or chat.</>
           )}
           {!settings.reviewerScenario && (
             <>Select a story preset to inject mock context.</>

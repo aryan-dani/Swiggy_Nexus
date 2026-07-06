@@ -19,9 +19,10 @@ export type NexusCardResult = {
   offer?: string;
   imageUrl: string;
   items?: number;
+  meta?: Record<string, unknown>;
 };
 
-const DEFAULT_IMG = "/images/demo/food.jpg";
+const DEFAULT_IMG = "/images/demo/food.svg";
 
 /** Last-resort placeholder (no remote URL — avoids onError loops). */
 const FALLBACK_SVG =
@@ -94,9 +95,12 @@ export default function NexusResultCard({
           onError={() =>
             setImgSrc((cur) => {
               if (cur === FALLBACK_SVG) return cur;
-              if (cur === "/images/demo/food.jpg") return "/images/demo/grocery.jpg";
-              if (cur === "/images/demo/grocery.jpg") return "/images/demo/dineout.jpg";
+              if (cur === "/images/demo/food.jpg") return "/images/demo/grocery.svg";
+              if (cur === "/images/demo/grocery.jpg") return "/images/demo/dineout.svg";
               if (cur === "/images/demo/dineout.jpg") return FALLBACK_SVG;
+              if (cur === "/images/demo/food.svg") return "/images/demo/grocery.svg";
+              if (cur === "/images/demo/grocery.svg") return "/images/demo/dineout.svg";
+              if (cur === "/images/demo/dineout.svg") return FALLBACK_SVG;
               return DEFAULT_IMG;
             })
           }

@@ -4,6 +4,18 @@
 
 ---
 
+## 60-second reviewer script
+
+1. Click **Chrono-Host** → send prefilled prompt → see 3-leg bundle panel + tool traces.
+2. Tap **Confirm groceries** on bundle → Instamart cart drawer → **Checkout** (`checkout` tool).
+3. Switch to **Deadlock breaker** → slot grid → book table (`book_table` with `slotId`).
+4. **Command Center** header shows address + Food/IM cart totals (live `get_food_cart` / `get_cart`).
+5. Toggle **Developer Mode** → **Tool Trace Theater** + MCP coverage meter (X/33 tools).
+
+This demonstrates cross-vertical orchestration, confirmation gates, production field names (`spinId`, `slotId`, `addressId`), and honest v1 limitations (no scheduled Food delivery).
+
+---
+
 ## One-sentence pitch
 
 Swiggy Nexus is an **autonomous lifestyle orchestrator**: a Planner layer reads user intent plus external cues (calendar, weather, cohort context — simulated in this demo); an **Executor** calls **Swiggy-shaped tools** (Food, Instamart, Dineout) through an MCP-compatible surface so fulfilment stays **deterministic**, not hallucinated prose.

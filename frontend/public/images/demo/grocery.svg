@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
+  <rect fill="#10b981" width="100%" height="100%"/>
+  <text x="50%" y="48%" fill="#fff" font-family="system-ui,sans-serif" font-size="32" font-weight="800" text-anchor="middle">Instamart</text>
+  <text x="50%" y="58%" fill="#d1fae5" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">Swiggy Nexus demo</text>
+</svg>

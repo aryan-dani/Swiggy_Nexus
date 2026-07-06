@@ -1,11 +1,12 @@
 import type { FeedItem, StreamEvent } from "@/lib/api";
 
-type Vertical = "food" | "instamart" | "dineout";
+type Vertical = "food" | "instamart" | "dineout" | "chrono";
 
 type NormalizedCtx = {
   deepWork: boolean;
   rainPune: boolean;
   watchParty: boolean;
+  moodScore: number;
   scenario: string;
   partySize: number;
   budgetInr: number;
@@ -15,12 +16,18 @@ type NormalizedCtx = {
 
 function normalizeContext(raw: Record<string, unknown> | undefined): NormalizedCtx {
   const sig = (raw?.signals as Record<string, unknown> | undefined) ?? {};
+  const event = (raw?.event as Record<string, unknown> | undefined) ?? {};
+  const guestsFromEvent =
+    typeof event.guests === "number" ? event.guests : undefined;
   return {
     deepWork: Boolean(sig.deepWorkBlock),
     rainPune: Boolean(sig.rainInPune),
     watchParty: Boolean(sig.watchParty),
+    moodScore: typeof sig.moodScore === "number" ? sig.moodScore : 0.35,
     scenario: typeof raw?.scenario === "string" ? raw.scenario : "",
-    partySize: typeof raw?.partySize === "number" ? raw.partySize : 4,
+    partySize:
+      guestsFromEvent ??
+      (typeof raw?.partySize === "number" ? raw.partySize : 4),
     budgetInr: typeof raw?.budgetInr === "number" ? raw.budgetInr : 800,
     city: typeof raw?.city === "string" ? raw.city : "Pune",
     recipeHint:
@@ -56,11 +63,21 @@ function inferInstamartCategory(message: string, ctx: NormalizedCtx): string {
 }
 
 function inferVertical(message: string, ctx: NormalizedCtx): Vertical {
+  if (ctx.scenario === "chrono_host") return "chrono";
+  if (ctx.scenario === "sentiment") return "instamart";
+  if (ctx.scenario === "dialectic") return "food";
   if (ctx.scenario === "deadlock") return "dineout";
   if (ctx.scenario === "flowstate") return "instamart";
   if (ctx.scenario === "zerowaste") return "instamart";
 
   const m = message.toLowerCase();
+  if (
+    ["plan my evening", "housewarming", "chrono host", "evening plan"].some((k) =>
+      m.includes(k)
+    )
+  ) {
+    return "chrono";
+  }
   if (
     [
       "dineout",
@@ -300,7 +317,7 @@ function toDineoutFeed(
     type: "join_strip",
     title: "Tap to Join (demo)",
     subtitle: joinUrl,
-    meta: { url: joinUrl, party_budget_inr: ctx.budgetInr },
+    meta: { url: joinUrl, joinUrl, partySize: ctx.partySize, rsvpCount: 4, party_budget_inr: ctx.budgetInr },
   });
   for (const s of slots.slice(0, 5)) {
     items.push({
@@ -322,6 +339,42 @@ export function buildDemoChatEvents(
   rawContext?: Record<string, unknown>
 ): StreamEvent[] {
   const ctx = normalizeContext(rawContext);
+  const mlow = userMessage.toLowerCase();
+
+  if (mlow.includes("confirm table")) {
+    const reply = "**Table confirmed** via `book_table` (mock). Check booking ticket in feed.";
+    const feed: FeedItem[] = [{
+      type: "booking",
+      title: "Spesso · Koregaon Park",
+      subtitle: "CONFIRMED · 20:00",
+      meta: { bookingId: `bk-${Date.now()}`, guests: ctx.partySize },
+    }];
+    return [
+      { type: "thinking", payload: { text: "Executor • dineout book_table" } },
+      { type: "tool", payload: { method: "book_table", vertical: "dineout" } },
+      { type: "feed", payload: { items: feed } },
+      { type: "assistant", payload: { text: reply } },
+      { type: "done", payload: { assistant_reply: reply, feed_items: feed } },
+    ];
+  }
+  if (mlow.includes("confirm groceries") || mlow.includes("checkout")) {
+    const reply = "Instamart **checkout** staged — open cart drawer to complete (mock `checkout`).";
+    return [
+      { type: "thinking", payload: { text: "Executor • im get_cart → checkout" } },
+      { type: "tool", payload: { method: "checkout", vertical: "im" } },
+      { type: "assistant", payload: { text: reply } },
+      { type: "done", payload: { assistant_reply: reply, feed_items: [] } },
+    ];
+  }
+  if (mlow.includes("confirm dessert")) {
+    const reply = "**Dessert placed** via `place_food_order` (mock). 10 PM reminder is manual in v1.";
+    return [
+      { type: "thinking", payload: { text: "Executor • food place_order" } },
+      { type: "tool", payload: { method: "place_food_order", vertical: "food" } },
+      { type: "assistant", payload: { text: reply } },
+      { type: "done", payload: { assistant_reply: reply, feed_items: [] } },
+    ];
+  }
 
   const vertical = inferVertical(userMessage, ctx);
 
@@ -377,6 +430,66 @@ export function buildDemoChatEvents(
   let feedItems: FeedItem[] = [];
   const assistantParts: string[] = [];
 
+  if (vertical === "chrono") {
+    const guests = ctx.partySize || 12;
+    const dineRaw = dineoutAvailability("do-italian-spesso", guests, "20:00", ctx);
+    const martRows = instamartInventory("party", ctx);
+    const foodRows = foodSearchRestaurants("gelato", coords.lat, coords.long);
+
+    const toolEvents: StreamEvent[] = [
+      { type: "tool", payload: { phase: "Executor", method: "dineout_get_saved_locations", params: {}, result: { locations: [{ label: "Home" }] } } },
+      { type: "tool", payload: { phase: "Executor", method: "dineout_search_restaurants_dineout", params: { query: "italian" }, result: dineRaw } },
+      { type: "tool", payload: { phase: "Executor", method: "dineout_get_available_slots", params: { guestCount: guests }, result: { slots: [{ slotId: 4204, label: "20:00" }] } } },
+      { type: "tool", payload: { phase: "Executor", method: "food_get_addresses", params: {}, result: { addresses: [{ addressId: "addr_kp_001" }] } } },
+      { type: "tool", payload: { phase: "Executor", method: "im_search_products", params: { query: "party" }, result: martRows } },
+      { type: "tool", payload: { phase: "Executor", method: "im_your_go_to_items", params: { party: true }, result: { products: martRows.slice(0, 2) } } },
+      { type: "tool", payload: { phase: "Executor", method: "im_update_cart", params: { items: 4 }, result: { total: 1847 } } },
+      { type: "tool", payload: { phase: "Executor", method: "im_get_cart", params: {}, result: { total: 1847, bill: { grandTotal: 1872 } } } },
+      { type: "tool", payload: { phase: "Executor", method: "food_search_restaurants", params: { query: "gelato" }, result: foodRows } },
+      { type: "tool", payload: { phase: "Executor", method: "food_get_restaurant_menu", params: { restaurantId: "fd_gelato_108" }, result: { categories: [] } } },
+      { type: "tool", payload: { phase: "Executor", method: "food_update_food_cart", params: { lines: 2 }, result: { subtotal_inr: 498 } } },
+      { type: "tool", payload: { phase: "Executor", method: "food_get_food_cart", params: {}, result: { total: 649 } } },
+    ];
+
+    feedItems = [
+      {
+        type: "event_bundle",
+        title: "Evening plan · Housewarming Saturday",
+        subtitle: "Dineout + Instamart + Food dessert (staged)",
+        meta: {
+          guests,
+          cuisine: "italian",
+          event: "Housewarming Saturday",
+          dineout: { restaurant: "Italian Spesso", slot: "20:00" },
+          instamart: { total: 1847, items: 6 },
+          food: { total: 649, item: "Gelato" },
+        },
+      },
+      ...toDineoutFeed(dineRaw, ctx, []),
+      ...toMartFeed(martRows).slice(0, 3),
+      ...toFoodFeed(foodRows.slice(0, 2), ctx),
+    ];
+
+    const assistantReply =
+      `Chrono-Host bundle for ${guests} guests: Italian table ~8 PM (confirm to book), ` +
+      `party supplies staged on Instamart, gelato dessert queued for a 10 PM reminder. Nothing auto-placed.`;
+
+    return [
+      ...thinkingEvents,
+      {
+        type: "thinking",
+        payload: { text: "Planner · Chrono-Host: Dineout → Instamart → Food dessert leg" },
+      },
+      ...toolEvents,
+      { type: "feed", payload: { items: feedItems } },
+      { type: "assistant", payload: { text: assistantReply } },
+      {
+        type: "done",
+        payload: { assistant_reply: assistantReply, feed_items: feedItems },
+      },
+    ];
+  }
+
   if (vertical === "food") {
     const rows = foodSearchRestaurants(cuisine, coords.lat, coords.long);
     if (ctx.rainPune && rows[2]) {
@@ -407,6 +520,11 @@ export function buildDemoChatEvents(
     assistantParts.push(
       `Food vertical (mock MCP: ${mcpMethod}). Showing ${feedItems.filter((x) => x.type === "restaurant").length} synth listings. Live creds unlock real catalog & checkout.`
     );
+    if (ctx.scenario === "dialectic" || mlow.includes("debate") || mlow.includes("winner")) {
+      assistantParts.unshift(
+        `Dialectic Dinner — Referee triggered commerce chain: search_restaurants → get_menu → update_food_cart → fetch_food_coupons (staged). Confirm before place_food_order.`
+      );
+    }
   } else if (vertical === "instamart") {
     const rows = instamartInventory(martCat, ctx);
     toolPayload = {
@@ -421,7 +539,17 @@ export function buildDemoChatEvents(
     };
     feedItems = toMartFeed(rows);
 
-    if (ctx.scenario === "zerowaste") {
+    if (ctx.scenario === "sentiment" || ctx.moodScore > 0.7) {
+      feedItems.unshift({
+        type: "comfort_proposal",
+        title: "Comfort bundle staged",
+        subtitle: "Dark chocolate + dessert search — I staged, did not place",
+        meta: { imTotal: 95, foodTotal: 249, moodScore: ctx.moodScore },
+      });
+      assistantParts.push(
+        `Sentiment Thermostat — mood ${ctx.moodScore.toFixed(2)}. Staged Instamart go-to + Food dessert option. **Nothing auto-placed.** Reply to confirm each leg.`
+      );
+    } else if (ctx.scenario === "zerowaste") {
       assistantParts.push(
         `Zero-Waste Meal Architecture — recipe "${ctx.recipeHint}" vs virtual pantry stub. Cart below is **diff-only** (missing SKUs); memory layer would hydrate from order history with Instamart APIs.`
       );

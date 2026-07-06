@@ -196,6 +196,13 @@ def _sse_tool(server_key: str, http_path: str, method: str, params: dict[str, An
     }
 
 def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generator[dict[str, Any], None, None]:
+    ctx = context or {}
+    # Reviewer scenarios use deterministic agent (rich multi-tool demos).
+    if ctx.get("scenario") in ("chrono_host", "deadlock", "flowstate", "zerowaste", "sentiment", "dialectic"):
+        from backend.agent import run_agent_stream as deterministic
+        yield from deterministic(user_message, ctx)
+        return
+
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
         yield {"type": "thinking", "payload": {"text": "GROQ_API_KEY missing. Falling back to deterministic mode."}}

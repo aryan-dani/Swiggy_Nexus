@@ -29,7 +29,7 @@ export async function POST(req: Request) {
       for (let i = 0; i < events.length; i++) {
         const ev = events[i];
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(ev)}\n\n`));
-        if (i > 0) await new Promise((r) => setTimeout(r, 120));
+        if (i > 0) await new Promise((r) => setTimeout(r, 70));
       }
       controller.close();
     },

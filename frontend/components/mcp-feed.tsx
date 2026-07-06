@@ -7,14 +7,26 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import NexusResultCard, {
   type NexusCardResult,
 } from "@/components/nexus-result-card";
+import { BookingTicket } from "@/components/booking-ticket";
+import { ChronoHostPanel } from "@/components/chrono-host-panel";
+import { GoToShelf } from "@/components/go-to-shelf";
+import { JoinStripCard } from "@/components/deadlock-arena";
+import { SentimentComfortCard } from "@/components/sentiment-comfort-card";
 import type { FeedItem } from "@/lib/api";
 import { mapFeedItemToNexusCard } from "@/lib/feed-mapper";
-import { loadDemoSettings } from "@/lib/nexus-settings-storage";
 import { nexusToast } from "@/lib/nexus-toast-bus";
 import { fadeUp, neoSpring, staggerContainer } from "@/lib/motion";
 
 export type McpFeedProps = {
   items: FeedItem[];
+  /** When set, empty-state copy reflects the active reviewer preset. */
+  activeScenario?: string;
+  compactFeed?: boolean;
+  onCardAction?: (card: NexusCardResult) => void;
+  onChronoConfirm?: (text: string) => void;
+  onOpenImCart?: () => void;
+  onOpenFoodCart?: () => void;
+  watchParty?: boolean;
 };
 
 const PLAYLIST = [
@@ -37,8 +49,25 @@ function bonusRowFromCards(
   }));
 }
 
-export default function McpFeed({ items }: McpFeedProps) {
-  const cards = items
+export default function McpFeed({
+  items,
+  activeScenario,
+  compactFeed = false,
+  onCardAction,
+  onChronoConfirm,
+  onOpenImCart,
+  onOpenFoodCart,
+  watchParty,
+}: McpFeedProps) {
+  const chronoBundle = items.find((i) => i.type === "event_bundle");
+  const joinStrip = items.find((i) => i.type === "join_strip");
+  const comfortCard = items.find((i) => i.type === "comfort_proposal");
+  const bookingCard = items.find((i) => i.type === "booking");
+  const scrollItems = items.filter(
+    (i) => !["event_bundle", "join_strip", "comfort_proposal", "booking"].includes(i.type)
+  );
+
+  const cards = scrollItems
     .map((item, i) => mapFeedItemToNexusCard(item, i))
     .filter((card): card is NonNullable<typeof card> => card != null);
 
@@ -47,14 +76,11 @@ export default function McpFeed({ items }: McpFeedProps) {
 
   const [optionsRound, setOptionsRound] = useState(0);
   const [playlistOpen, setPlaylistOpen] = useState(false);
-  const [compact, setCompact] = useState(false);
+  const [compact, setCompact] = useState(compactFeed);
 
   useEffect(() => {
-    const sync = () => setCompact(loadDemoSettings().compactFeed);
-    sync();
-    window.addEventListener("focus", sync);
-    return () => window.removeEventListener("focus", sync);
-  }, []);
+    setCompact(compactFeed);
+  }, [compactFeed]);
 
   useEffect(() => {
     setOptionsRound(0);
@@ -75,10 +101,8 @@ export default function McpFeed({ items }: McpFeedProps) {
   );
 
   const addOne = useCallback((c: NexusCardResult) => {
-    const slot =
-      c.type === "grocery" ? "cart" : c.type === "dineout" ? "booking" : "order";
-    nexusToast(`Added “${c.title}” to demo ${slot} (mock).`);
-  }, []);
+    onCardAction?.(c);
+  }, [onCardAction]);
 
   const addAll = useCallback(() => {
     if (cards.length === 0) return;
@@ -104,10 +128,12 @@ export default function McpFeed({ items }: McpFeedProps) {
         transition={neoSpring}
       >
         <h2 className="font-display text-lg font-black uppercase tracking-tight text-black">
-          Nexus Live Feed
+          {chronoBundle ? "Chrono-Host · Live bundle" : "Nexus Live Feed"}
         </h2>
         <p className="font-display text-[11px] font-bold uppercase tracking-widest text-slate-500">
-          Food · Instamart · Dineout (mock)
+          {chronoBundle
+            ? "Dineout · Instamart · Food — staged, confirm each leg"
+            : "Food · Instamart · Dineout (mock)"}
         </p>
       </motion.div>
 
@@ -133,7 +159,9 @@ export default function McpFeed({ items }: McpFeedProps) {
               <ShoppingCart className="h-7 w-7 text-black" />
             </motion.div>
             <p className="font-display text-sm font-bold text-slate-600">
-              Send a message — cards appear here when the agent calls mock tools.
+              {activeScenario === "chrono_host"
+                ? "Chrono-Host is armed — send “Plan my evening for 12” to see the 3-vertical bundle panel."
+                : "Send a message — cards appear here when the agent calls mock tools."}
             </p>
           </motion.div>
         ) : (
@@ -145,6 +173,26 @@ export default function McpFeed({ items }: McpFeedProps) {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
+            {chronoBundle && (
+              <ChronoHostPanel
+                item={chronoBundle}
+                onConfirmViaChat={onChronoConfirm}
+                onOpenImCart={onOpenImCart}
+                onOpenFoodCart={onOpenFoodCart}
+              />
+            )}
+            {joinStrip && <JoinStripCard item={joinStrip} />}
+            {comfortCard && <SentimentComfortCard item={comfortCard} />}
+            {bookingCard && (
+              <BookingTicket
+                venueName={bookingCard.title}
+                slot={bookingCard.subtitle ?? "20:00"}
+                guests={Number(bookingCard.meta?.guests ?? 6)}
+                bookingId={String(bookingCard.meta?.bookingId ?? "bk-mock")}
+              />
+            )}
+            <GoToShelf partyMode={watchParty || activeScenario === "chrono_host"} />
+
             {errors.map((err, i) => (
               <motion.div
                 key={`err-${i}`}

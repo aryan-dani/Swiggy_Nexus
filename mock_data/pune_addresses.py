@@ -1,3 +1,5 @@
+"""Pune delivery addresses — legacy fields kept for feed compat; production fields for MCP mocks."""
+
 ADDRESSES: list[dict] = [
     {
         "addressId": "addr_kp_001",
@@ -6,6 +8,14 @@ ADDRESSES: list[dict] = [
         "area": "Koregaon Park",
         "city": "Pune",
         "pin": "411001",
+        "fullAddress": "Rosary School Road, Near German Bakery, Koregaon Park, Pune 411001",
+        "addressLine": "Rosary School Road",
+        "addressLine2": "Near German Bakery",
+        "locality": "Koregaon Park",
+        "postalCode": "411001",
+        "addressCategory": "HOME",
+        "_latitude": 18.5362,
+        "_longitude": 73.8958,
     },
     {
         "addressId": "addr_baner_002",
@@ -14,6 +24,14 @@ ADDRESSES: list[dict] = [
         "area": "Baner",
         "city": "Pune",
         "pin": "411045",
+        "fullAddress": "Baner High Street, Opp. HDFC Bank, Baner, Pune 411045",
+        "addressLine": "Baner High Street",
+        "addressLine2": "Opp. HDFC Bank",
+        "locality": "Baner",
+        "postalCode": "411045",
+        "addressCategory": "WORK",
+        "_latitude": 18.5590,
+        "_longitude": 73.7794,
     },
     {
         "addressId": "addr_fcr_003",
@@ -22,5 +40,71 @@ ADDRESSES: list[dict] = [
         "area": "Pune Cantonment",
         "city": "Pune",
         "pin": "411001",
+        "fullAddress": "Camp, MG Road junction, Pune Cantonment, Pune 411001",
+        "addressLine": "MG Road junction",
+        "addressLine2": "Camp",
+        "locality": "Pune Cantonment",
+        "postalCode": "411001",
+        "addressCategory": "OTHER",
+        "_latitude": 18.5158,
+        "_longitude": 73.8772,
+    },
+    {
+        "addressId": "addr_kalyani_004",
+        "label": "Parents",
+        "line1": "Lane 7, Kalyani Nagar",
+        "area": "Kalyani Nagar",
+        "city": "Pune",
+        "pin": "411006",
+        "fullAddress": "Lane 7, Kalyani Nagar, Pune 411006",
+        "addressLine": "Lane 7",
+        "addressLine2": "",
+        "locality": "Kalyani Nagar",
+        "postalCode": "411006",
+        "addressCategory": "FRIENDS_AND_FAMILY",
+        "_latitude": 18.5489,
+        "_longitude": 73.9035,
+    },
+    {
+        "addressId": "addr_hinj_005",
+        "label": "Gym flat",
+        "line1": "Hinjewadi Phase 1, Rajiv Gandhi Infotech Park",
+        "area": "Hinjewadi",
+        "city": "Pune",
+        "pin": "411057",
+        "fullAddress": "Hinjewadi Phase 1, Rajiv Gandhi Infotech Park, Pune 411057",
+        "addressLine": "Rajiv Gandhi Infotech Park",
+        "addressLine2": "Phase 1",
+        "locality": "Hinjewadi",
+        "postalCode": "411057",
+        "addressCategory": "HOME",
+        "_latitude": 18.5912,
+        "_longitude": 73.7389,
+    },
+    {
+        "addressId": "addr_viman_006",
+        "label": "Airport pickup",
+        "line1": "Viman Nagar, Clover Park",
+        "area": "Viman Nagar",
+        "city": "Pune",
+        "pin": "411014",
+        "fullAddress": "Viman Nagar, Clover Park, Pune 411014",
+        "addressLine": "Clover Park",
+        "addressLine2": "",
+        "locality": "Viman Nagar",
+        "postalCode": "411014",
+        "addressCategory": "OTHER",
+        "_latitude": 18.5679,
+        "_longitude": 73.9143,
     },
 ]
+
+
+def public_address(a: dict) -> dict:
+    """Strip internal coordinates for get_addresses responses."""
+    out = {k: v for k, v in a.items() if not k.startswith("_")}
+    return out
+
+
+def get_address_by_id(address_id: str) -> dict | None:
+    return next((a for a in ADDRESSES if a["addressId"] == address_id), None)

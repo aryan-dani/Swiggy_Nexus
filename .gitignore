@@ -12,3 +12,5 @@ coverage/
 *.log
 .env*
 !.env.example
+docs/_swiggy_cache/
+backend/nexus_memory.db

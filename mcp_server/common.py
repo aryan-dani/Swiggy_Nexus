@@ -31,3 +31,15 @@ def get_param(params: dict[str, Any], *keys: str) -> Any:
         if k in params:
             return params[k]
     return None
+
+
+_mock_scenario: str | None = None
+
+
+def set_mock_scenario(value: str | None) -> None:
+    global _mock_scenario
+    _mock_scenario = value
+
+
+def get_mock_scenario() -> str | None:
+    return _mock_scenario

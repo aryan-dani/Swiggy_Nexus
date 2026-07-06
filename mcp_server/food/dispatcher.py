@@ -4,11 +4,12 @@ import random
 import uuid
 from typing import Any
 
-from mock_data.food_catalog import MENU_BY_RESTAURANT, RESTAURANTS
-from mock_data.pune_addresses import ADDRESSES
-from mcp_server.common import get_param, pick_eta, simulated_latency_jitter_ms, tool_log
-
-_food_cart_store: dict[str, dict[str, Any]] = {}
+from mock_data.active_orders import get_food_order, list_food_orders, save_food_order
+from mock_data.food_catalog import FOOD_COUPONS, MENU_BY_RESTAURANT, RESTAURANTS
+from mock_data.pune_addresses import ADDRESSES, get_address_by_id, public_address
+from mcp_server.common import get_mock_scenario, get_param, pick_eta, simulated_latency_jitter_ms, tool_log
+from mcp_server.session_store import clear_food_cart, get_session, resolve_session_id
+from mcp_server.tool_aliases import resolve_method
 
 
 def _error(code: str, message: str) -> tuple[bool, None, dict[str, Any]]:
@@ -26,9 +27,28 @@ def _flatten_menu_prices(restaurant_id: str) -> dict[str, int]:
     return out
 
 
+def _restaurant_row(r: dict) -> dict[str, Any]:
+    eta = pick_eta(r)
+    rid = r["restaurant_id"]
+    return {
+        "id": rid,
+        "restaurant_id": rid,
+        "name": r["name"],
+        "rating": r["rating"],
+        "eta_mins": eta,
+        "distanceKm": r.get("distance_km", round(random.uniform(1.5, 8.0), 1)),
+        "availabilityStatus": r.get("availability_status", "OPEN"),
+        "deliveryTimeRange": f"{r.get('eta_mins_min', 25)}-{r.get('eta_mins_max', 40)} MIN",
+        "deliveryTimeSpoken": f"about {eta} minutes",
+        "cuisines": r["cuisines"],
+        "tag": r.get("tag"),
+        "price_for_two_inr": r.get("price_for_two_inr"),
+    }
+
+
 def handle_get_addresses(params: dict[str, Any]) -> tuple[bool, dict[str, Any] | None, dict | None]:
     simulated_latency_jitter_ms()
-    data = {"addresses": list(ADDRESSES)}
+    data = {"addresses": [public_address(a) for a in ADDRESSES]}
     tool_log("food", "get_addresses", params or {}, f"{len(ADDRESSES)} addresses returned")
     return True, data, None
 
@@ -36,31 +56,30 @@ def handle_get_addresses(params: dict[str, Any]) -> tuple[bool, dict[str, Any] |
 def handle_search_restaurants(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
     simulated_latency_jitter_ms()
     address_id = get_param(params, "addressId", "address_id")
+    query = str(get_param(params, "query", "q") or "").lower().strip()
     if not address_id:
         return _error("VALIDATION", "addressId is required")
-    addr = next((a for a in ADDRESSES if a["addressId"] == address_id), None)
+    addr = get_address_by_id(str(address_id))
     if not addr:
         return _error("NOT_FOUND", f"Unknown addressId: {address_id}")
 
-    shuffled = list(RESTAURANTS)
-    random.shuffle(shuffled)
-    rows = []
-    for r in shuffled[:5]:
-        eta = pick_eta(r)
-        rows.append(
-            {
-                "restaurant_id": r["restaurant_id"],
-                "name": r["name"],
-                "rating": r["rating"],
-                "eta_mins": eta,
-                "cuisines": r["cuisines"],
-                "tag": r["tag"],
-                "price_for_two_inr": r["price_for_two_inr"],
-            }
-        )
-
-    data = {"addressId": address_id, "area": addr.get("area"), "restaurants": rows}
-    tool_log("food", "search_restaurants", params or {}, f"{len(rows)} restaurants returned for {address_id}")
+    rows = list(RESTAURANTS)
+    if query:
+        rows = [
+            r for r in rows
+            if query in r["name"].lower()
+            or any(query in c.lower() for c in r.get("cuisines", []))
+            or query in str(r.get("tag", "")).lower()
+        ] or list(RESTAURANTS)
+    random.shuffle(rows)
+    out_rows = [_restaurant_row(r) for r in rows[:8]]
+    data = {
+        "addressId": address_id,
+        "area": addr.get("area") or addr.get("locality"),
+        "restaurants": out_rows,
+        "nextOffset": len(out_rows),
+    }
+    tool_log("food", "search_restaurants", params or {}, f"{len(out_rows)} restaurants")
     return True, data, None
 
 
@@ -78,15 +97,22 @@ def handle_get_menu(params: dict[str, Any]) -> tuple[bool, dict | None, dict | N
 
 def handle_add_to_cart(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
     simulated_latency_jitter_ms()
-    request_id = str(get_param(params, "requestId", "request_id") or "").strip()
+    sid = resolve_session_id(params)
+    session = get_session(sid)
     rid = str(get_param(params, "restaurantId", "restaurant_id") or "").strip()
-    raw_lines = get_param(params, "lines", "items")
-    if not request_id:
-        return _error("VALIDATION", "requestId is required for session-scoped cart")
+    address_id = str(get_param(params, "addressId", "address_id") or session.food.address_id or "").strip()
+    restaurant_name = str(get_param(params, "restaurantName", "restaurant_name") or "")
+    raw_lines = get_param(params, "lines", "items", "cartItems")
     if not rid:
         return _error("VALIDATION", "restaurantId is required")
     if not isinstance(raw_lines, list) or not raw_lines:
-        return _error("VALIDATION", "lines must be a non-empty list")
+        return _error("VALIDATION", "lines/cartItems must be a non-empty list")
+
+    flush_msg = None
+    if session.food.restaurant_id and session.food.restaurant_id != rid and session.food.lines:
+        clear_food_cart(sid)
+        session = get_session(sid)
+        flush_msg = f"Previous cart from another restaurant was cleared."
 
     prices = _flatten_menu_prices(rid)
     lines_out: list[dict[str, Any]] = []
@@ -101,45 +127,173 @@ def handle_add_to_cart(params: dict[str, Any]) -> tuple[bool, dict | None, dict 
             return _error("VALIDATION", f"Unknown item_id {item_id} for restaurant {rid}")
         line_total = unit * qty
         subtotal += line_total
-        lines_out.append(
-            {
-                "item_id": item_id,
-                "qty": qty,
-                "unit_price_inr": unit,
-                "line_total_inr": line_total,
-            }
-        )
+        lines_out.append({
+            "item_id": item_id,
+            "itemId": item_id,
+            "qty": qty,
+            "quantity": qty,
+            "unit_price_inr": unit,
+            "line_total_inr": line_total,
+            "valid_addons": [],
+        })
 
-    cart_id = f"cart_fd_{request_id}"
-    blob = {"cart_id": cart_id, "restaurant_id": rid, "lines": lines_out, "subtotal_inr": subtotal}
-    _food_cart_store[cart_id] = blob
+    session.food.restaurant_id = rid
+    session.food.restaurant_name = restaurant_name or next((r["name"] for r in RESTAURANTS if r["restaurant_id"] == rid), rid)
+    session.food.address_id = address_id
+    session.food.lines = lines_out
+
+    cart_id = f"cart_fd_{sid}"
+    blob = {
+        "cart_id": cart_id,
+        "restaurant_id": rid,
+        "restaurantId": rid,
+        "lines": lines_out,
+        "items": lines_out,
+        "subtotal_inr": subtotal,
+        "total": subtotal - session.food.coupon_discount_inr,
+        "message": flush_msg,
+    }
     tool_log("food", "add_to_cart", params or {}, f"cart {cart_id}, subtotal INR {subtotal}")
     return True, blob, None
 
 
+def handle_get_food_cart(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    simulated_latency_jitter_ms()
+    if get_mock_scenario() == "cart_expired":
+        return _error("CART_EXPIRED", "Cart expired — please rebuild your order.")
+    sid = resolve_session_id(params)
+    session = get_session(sid)
+    fc = session.food
+    subtotal = sum(int(l.get("line_total_inr", 0)) for l in fc.lines)
+    delivery = 40 if fc.lines else 0
+    discount = fc.coupon_discount_inr
+    total = max(0, subtotal + delivery - discount)
+    data = {
+        "restaurantId": fc.restaurant_id,
+        "restaurantName": fc.restaurant_name,
+        "addressId": fc.address_id,
+        "items": fc.lines,
+        "lines": fc.lines,
+        "subtotal_inr": subtotal,
+        "deliveryCharge": delivery,
+        "total": total,
+        "availablePaymentMethods": ["COD"],
+        "offers": {"coupon_applied": {"code": fc.coupon_code, "coupon_discount": discount}},
+    }
+    tool_log("food", "get_food_cart", params or {}, f"{len(fc.lines)} items, total INR {total}")
+    return True, data, None
+
+
+def handle_flush_food_cart(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    simulated_latency_jitter_ms()
+    sid = resolve_session_id(params)
+    clear_food_cart(sid)
+    tool_log("food", "flush_food_cart", params or {}, "cart cleared")
+    return True, {"cleared": True}, None
+
+
+def handle_fetch_food_coupons(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    simulated_latency_jitter_ms()
+    cod = [c for c in FOOD_COUPONS if not c.get("requiresOnlinePayment")]
+    data = {"coupons": cod}
+    tool_log("food", "fetch_food_coupons", params or {}, f"{len(cod)} coupons")
+    return True, data, None
+
+
+def handle_apply_food_coupon(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    simulated_latency_jitter_ms()
+    code = str(get_param(params, "code", "couponCode") or "").strip().upper()
+    coupon = next((c for c in FOOD_COUPONS if c["code"] == code), None)
+    if not coupon:
+        return _error("COUPON_INVALID", f"Coupon {code} is not valid")
+    if coupon.get("requiresOnlinePayment"):
+        return _error("COUPON_REQUIRES_ONLINE_PAYMENT", "This coupon requires online payment")
+    sid = resolve_session_id(params)
+    session = get_session(sid)
+    session.food.coupon_code = code
+    session.food.coupon_discount_inr = int(coupon.get("discount_inr", 0))
+    tool_log("food", "apply_food_coupon", params or {}, f"applied {code}")
+    return True, {"code": code, "discount_inr": session.food.coupon_discount_inr}, None
+
+
 def handle_place_order(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
     simulated_latency_jitter_ms()
-    cart_id = get_param(params, "cartId", "cart_id")
-    if not cart_id or str(cart_id) not in _food_cart_store:
-        return _error("VALIDATION", "Valid cart_id is required (call add_to_cart first in this demo)")
+    sid = resolve_session_id(params)
+    session = get_session(sid)
+    cart_id = get_param(params, "cartId", "cart_id") or f"cart_fd_{sid}"
+    address_id = str(get_param(params, "addressId", "address_id") or session.food.address_id or "")
+    if not session.food.lines:
+        return _error("VALIDATION", "Cart is empty — add items first")
 
-    cart = _food_cart_store[str(cart_id)]
-    rid = cart["restaurant_id"]
+    subtotal = sum(int(l.get("line_total_inr", 0)) for l in session.food.lines)
+    total = subtotal + 40 - session.food.coupon_discount_inr
+    if total >= 1000:
+        return _error("VALIDATION", "Cart exceeds ₹1000 cap for Builders Club mock orders")
+
+    rid = session.food.restaurant_id
     rest = next((r for r in RESTAURANTS if r["restaurant_id"] == rid), None)
     eta = pick_eta(rest) if rest else random.randint(28, 40)
     oid = f"FD_ORD_{uuid.uuid4().hex[:8].upper()}"
-    msg = f"Order confirmed. Delivery in {eta} mins."
+    msg = f"Swiggy order placed successfully. Delivery in {eta} mins. Payment: COD."
     data = {
         "order_id": oid,
+        "orderId": oid,
         "cart_id": cart_id,
         "restaurant_id": rid,
+        "addressId": address_id,
         "eta_mins": eta,
-        "subtotal_inr": cart.get("subtotal_inr"),
-        "payment_mode": params.get("paymentMode") or params.get("payment_mode") or "COD",
+        "subtotal_inr": subtotal,
+        "total": total,
+        "paymentMethod": params.get("paymentMethod") or params.get("payment_mode") or "COD",
         "message": msg,
     }
+    save_food_order(data)
+    clear_food_cart(sid)
     tool_log("food", "place_order", params or {}, f"order_id={oid}, ETA {eta}m")
-    del _food_cart_store[str(cart_id)]
+    return True, data, None
+
+
+def handle_get_food_orders(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    simulated_latency_jitter_ms()
+    orders = list_food_orders()
+    data = {"orders": [{"orderId": o.get("orderId"), "status": "ACTIVE", **o} for o in orders]}
+    tool_log("food", "get_food_orders", params or {}, f"{len(orders)} orders")
+    return True, data, None
+
+
+def handle_get_food_order_details(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    simulated_latency_jitter_ms()
+    oid = str(get_param(params, "orderId", "order_id") or "")
+    order = get_food_order(oid)
+    if not order:
+        return _error("NOT_FOUND", f"Order {oid} not found")
+    tool_log("food", "get_food_order_details", params or {}, oid)
+    return True, order, None
+
+
+def handle_track_food_order(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    simulated_latency_jitter_ms()
+    oid = str(get_param(params, "orderId", "order_id") or "")
+    order = get_food_order(oid)
+    if not order:
+        return _error("NOT_FOUND", f"Order {oid} not found")
+    data = {
+        "orderId": oid,
+        "status": "OUT_FOR_DELIVERY",
+        "eta_mins": order.get("eta_mins", 25),
+        "deliveryTimeSpoken": f"about {order.get('eta_mins', 25)} minutes",
+    }
+    tool_log("food", "track_food_order", params or {}, data["status"])
+    return True, data, None
+
+
+def handle_report_error(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    simulated_latency_jitter_ms()
+    data = {
+        "reportLink": "mailto:builders@swiggy.in?subject=Mock%20error%20report",
+        "summary": "Error report generated (mock)",
+    }
+    tool_log("food", "report_error", params or {}, "report link")
     return True, data, None
 
 
@@ -148,15 +302,23 @@ _TOOLS: dict[str, Any] = {
     "search_restaurants": handle_search_restaurants,
     "get_menu": handle_get_menu,
     "add_to_cart": handle_add_to_cart,
+    "get_food_cart": handle_get_food_cart,
+    "flush_food_cart": handle_flush_food_cart,
+    "fetch_food_coupons": handle_fetch_food_coupons,
+    "apply_food_coupon": handle_apply_food_coupon,
     "place_order": handle_place_order,
+    "get_food_orders": handle_get_food_orders,
+    "get_food_order_details": handle_get_food_order_details,
+    "track_food_order": handle_track_food_order,
+    "report_error": handle_report_error,
 }
 
 
 def invoke(method: str | None, params: dict[str, Any] | None) -> tuple[bool, Any, dict[str, Any] | None]:
     if not method or not isinstance(method, str):
         return _error("VALIDATION", "method is required")
-    fn = _TOOLS.get(method.strip())
+    resolved = resolve_method("food", method)
+    fn = _TOOLS.get(resolved)
     if not fn:
         return _error("UNKNOWN_METHOD", f"Unknown tool: {method}")
-    p = dict(params or {})
-    return fn(p)
+    return fn(dict(params or {}))

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
 
 import { NexusToastHost } from "@/components/nexus-toast-host";
+import { NexusSessionProvider } from "@/lib/nexus-session-context";
 import "./globals.css";
 
 const inter = Inter({
@@ -37,7 +38,7 @@ export default function RootLayout({
         className={`${inter.variable} ${jetbrains.variable} ${plusJakarta.variable} font-sans min-h-screen`}
       >
         <NexusToastHost />
-        {children}
+        <NexusSessionProvider>{children}</NexusSessionProvider>
       </body>
     </html>
   );

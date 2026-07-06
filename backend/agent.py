@@ -7,17 +7,34 @@ from typing import Any, Generator, Literal
 
 from backend.mcp_client import LocalMCPError, call_tool
 
-Vertical = Literal["food", "im", "dineout"]
+Vertical = Literal["food", "im", "dineout", "chrono"]
 
 
 def _detect_vertical(message: str, ctx: dict[str, Any]) -> Vertical:
     mlow = message.lower()
+    if ctx.get("scenario") == "chrono_host":
+        return "chrono"
+    if ctx.get("scenario") in ("sentiment",):
+        return "im"
+    if ctx.get("scenario") in ("dialectic",):
+        return "food"
     ctx_v = ctx.get("vertical")
     if ctx_v == "dineout" or ctx.get("scenario") == "team_dinner":
         return "dineout"
     if ctx_v == "instamart":
         return "im"
 
+    if any(
+        k in mlow
+        for k in (
+            "plan my evening",
+            "housewarming",
+            "chrono host",
+            "evening plan",
+            "dinner out and dessert",
+        )
+    ):
+        return "chrono"
     if any(
         k in mlow
         for k in (
@@ -167,14 +184,15 @@ def run_food_pizza_order(uuid_session: str, ctx: dict[str, Any]) -> Generator[di
     cart_params = {
         "requestId": uuid_session,
         "restaurantId": rid,
+        "addressId": addr_id,
         "lines": [{"item_id": "dom_mar_med", "qty": 1}],
     }
     cart_any = call_tool("food", "add_to_cart", cart_params)
     cart = cart_any if isinstance(cart_any, dict) else {}
     yield {"type": "tool", "payload": _sse_tool("food", "/food", "add_to_cart", cart_params, cart_any)}
-    cid = str(cart.get("cart_id", ""))
+    cid = str(cart.get("cart_id", f"cart_fd_{uuid_session}"))
 
-    order_any = call_tool("food", "place_order", {"cart_id": cid, "payment_mode": "COD"})
+    order_any = call_tool("food", "place_order", {"requestId": uuid_session, "cartId": cid, "addressId": addr_id, "paymentMethod": "COD"})
     order = order_any if isinstance(order_any, dict) else {}
     yield {"type": "tool", "payload": _sse_tool("food", "/food", "place_order", {"cart_id": cid}, order_any)}
 
@@ -202,8 +220,8 @@ def run_instamart(uuid_session: str, message: str) -> Generator[dict[str, Any], 
             snippet = token
             break
     yield _thinking("`im.search_products` for quick grocery staples.")
-    prods = call_tool("im", "search_products", {"query": snippet or None})
-    yield {"type": "tool", "payload": _sse_tool("im", "/im", "search_products", {"query": snippet or None}, prods)}
+    prods = call_tool("im", "search_products", {"query": snippet or "milk", "addressId": "addr_kp_001"})
+    yield {"type": "tool", "payload": _sse_tool("im", "/im", "search_products", {"query": snippet or "milk"}, prods)}
     plist = []
     if isinstance(prods, dict):
         plist = prods.get("products") or []
@@ -212,25 +230,27 @@ def run_instamart(uuid_session: str, message: str) -> Generator[dict[str, Any], 
     line_items: list[dict[str, Any]] = []
     pid_milk = "im_milk_f"
     pid_bread = "im_bread"
-    if any(p["product_id"] == pid_milk for p in picks):
+    if any(p.get("product_id") == pid_milk for p in picks):
         line_items.append({"product_id": pid_milk, "qty": 1})
     elif picks:
-        line_items.append({"product_id": picks[0]["product_id"], "qty": 1})
-    if any(p["product_id"] == pid_bread for p in picks):
+        v0 = (picks[0].get("variants") or [{}])[0]
+        spin = v0.get("spinId") if isinstance(v0, dict) else None
+        line_items.append({"spinId": spin, "product_id": picks[0]["product_id"], "qty": 1} if spin else {"product_id": picks[0]["product_id"], "qty": 1})
+    if any(p.get("product_id") == pid_bread for p in picks):
         line_items.append({"product_id": pid_bread, "qty": 1})
 
     yield _thinking("`im.add_to_cart` assembling a basket.")
     cart = call_tool(
         "im",
         "add_to_cart",
-        {"request_id": uuid_session, "items": line_items},
+        {"requestId": uuid_session, "selectedAddressId": "addr_kp_001", "items": line_items},
     )
     yield {"type": "tool", "payload": _sse_tool("im", "/im", "add_to_cart", {"items": line_items}, cart)}
     cid = ""
     if isinstance(cart, dict):
-        cid = str(cart.get("cart_id", ""))
+        cid = str(cart.get("cart_id", f"cart_im_{uuid_session}"))
 
-    out = call_tool("im", "checkout", {"cart_id": cid})
+    out = call_tool("im", "checkout", {"requestId": uuid_session, "cartId": cid})
     yield {"type": "tool", "payload": _sse_tool("im", "/im", "checkout", {"cart_id": cid}, out)}
 
     feed: list[dict[str, Any]] = []
@@ -340,6 +360,138 @@ def run_dineout(ctx: dict[str, Any]) -> Generator[dict[str, Any], None, None]:
     yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": feed}}
 
 
+def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[str, Any], None, None]:
+    """Combined Dineout + Instamart + Food evening planner (staged, no auto-place)."""
+    from backend.memory import set_user_preference
+    import json
+
+    event = ctx.get("event") if isinstance(ctx.get("event"), dict) else {}
+    guests = int(event.get("guests") or ctx.get("partySize") or ctx.get("party_size") or 12)
+    cuisine = str(event.get("cuisineHint") or "italian").lower()
+    event_title = str(event.get("title") or "Your evening")
+
+    yield _thinking("Planner · Chrono-Host: orchestrating Dineout + Instamart + Food across one evening.")
+
+    # --- Dineout leg ---
+    yield _thinking("Dineout: resolving saved locations.")
+    locs_any = call_tool("dineout", "get_saved_locations", {})
+    yield {"type": "tool", "payload": _sse_tool("dineout", "/dineout", "get_saved_locations", {}, locs_any)}
+    locs = locs_any if isinstance(locs_any, dict) else {}
+    loc0 = (locs.get("locations") or [{}])[0]
+    lat, lng = loc0.get("lat"), loc0.get("lng")
+
+    yield _thinking(f"Dineout: searching {cuisine} restaurants for {guests} guests.")
+    dine_params = {"query": cuisine, "latitude": lat, "longitude": lng}
+    dine_search = call_tool("dineout", "search_restaurants_dineout", dine_params)
+    yield {"type": "tool", "payload": _sse_tool("dineout", "/dineout", "search_restaurants_dineout", dine_params, dine_search)}
+    ds = dine_search if isinstance(dine_search, dict) else {}
+    rest_id = str((ds.get("restaurants") or [{}])[0].get("restaurant_id", "do_italian_804"))
+
+    slot_params = {"restaurantId": rest_id, "guestCount": guests, "date": "2026-07-12", "partySize": guests}
+    slots_any = call_tool("dineout", "get_available_slots", slot_params)
+    yield {"type": "tool", "payload": _sse_tool("dineout", "/dineout", "get_available_slots", slot_params, slots_any)}
+    slots_blob = slots_any if isinstance(slots_any, dict) else {}
+    slot0 = (slots_blob.get("slots") or [{}])[0]
+    slot_label = slot0.get("label", "20:00")
+
+    # --- Instamart leg ---
+    yield _thinking("Instamart: party supplies for the housewarming.")
+    addr_any = call_tool("food", "get_addresses", {})
+    yield {"type": "tool", "payload": _sse_tool("food", "/food", "get_addresses", {}, addr_any)}
+    addrs = addr_any if isinstance(addr_any, dict) else {}
+    addr_id = _pick_address_id(ctx, addrs)
+
+    im_search = call_tool("im", "search_products", {"addressId": addr_id, "query": "party"})
+    yield {"type": "tool", "payload": _sse_tool("im", "/im", "search_products", {"query": "party"}, im_search)}
+    im_prods = (im_search.get("products") if isinstance(im_search, dict) else []) or []
+    im_lines: list[dict[str, Any]] = []
+    for p in im_prods[:4]:
+        v = (p.get("variants") or [{}])[0]
+        spin = v.get("spinId")
+        if spin:
+            im_lines.append({"spinId": spin, "quantity": 2 if "plate" in p.get("name", "").lower() else 1})
+
+    im_cart_params = {"requestId": uuid_session, "selectedAddressId": addr_id, "items": im_lines}
+    im_cart_any = call_tool("im", "update_cart", im_cart_params)
+    yield {"type": "tool", "payload": _sse_tool("im", "/im", "update_cart", im_cart_params, im_cart_any)}
+    im_cart_view = call_tool("im", "get_cart", {"requestId": uuid_session})
+    yield {"type": "tool", "payload": _sse_tool("im", "/im", "get_cart", {"requestId": uuid_session}, im_cart_view)}
+
+    # --- Food dessert leg (staged) ---
+    yield _thinking("Food: staging gelato dessert for ~10 PM (reminder — no scheduled delivery in v1).")
+    dessert_search = call_tool("food", "search_restaurants", {"addressId": addr_id, "query": "gelato"})
+    yield {"type": "tool", "payload": _sse_tool("food", "/food", "search_restaurants", {"query": "gelato"}, dessert_search)}
+    ds_food = dessert_search if isinstance(dessert_search, dict) else {}
+    gelato_rid = str((ds_food.get("restaurants") or [{}])[0].get("restaurant_id", "fd_gelato_108"))
+
+    menu_any = call_tool("food", "get_restaurant_menu", {"restaurantId": gelato_rid, "addressId": addr_id})
+    yield {"type": "tool", "payload": _sse_tool("food", "/food", "get_restaurant_menu", {"restaurantId": gelato_rid}, menu_any)}
+
+    food_cart_params = {
+        "requestId": uuid_session,
+        "restaurantId": gelato_rid,
+        "addressId": addr_id,
+        "cartItems": [{"itemId": "gv_pistachio", "quantity": 2}],
+        "lines": [{"item_id": "gv_pistachio", "qty": 2}],
+    }
+    food_cart_any = call_tool("food", "update_food_cart", food_cart_params)
+    yield {"type": "tool", "payload": _sse_tool("food", "/food", "update_food_cart", food_cart_params, food_cart_any)}
+    food_cart_view = call_tool("food", "get_food_cart", {"requestId": uuid_session, "addressId": addr_id})
+    yield {"type": "tool", "payload": _sse_tool("food", "/food", "get_food_cart", {"addressId": addr_id}, food_cart_view)}
+
+    bundle = {
+        "event": event_title,
+        "dineout": {"restaurantId": rest_id, "slot": slot_label, "guests": guests, "status": "STAGED"},
+        "instamart": im_cart_view if isinstance(im_cart_view, dict) else {},
+        "food": food_cart_view if isinstance(food_cart_view, dict) else {},
+    }
+    set_user_preference("last_event_bundle", json.dumps(bundle))
+
+    dine_name = (ds.get("restaurants") or [{}])[0].get("name", "Restaurant")
+    im_total = (im_cart_view or {}).get("total", "?") if isinstance(im_cart_view, dict) else "?"
+    food_total = (food_cart_view or {}).get("total", "?") if isinstance(food_cart_view, dict) else "?"
+
+    feed: list[dict[str, Any]] = [
+        {
+            "type": "event_bundle",
+            "title": f"Evening plan · {event_title}",
+            "subtitle": "Dineout + Instamart + Food dessert — review each leg",
+            "meta": bundle,
+        },
+        {
+            "type": "dineout",
+            "title": dine_name,
+            "subtitle": f"Table for {guests} · {slot_label} · confirm to book",
+            "meta": {"restaurant_id": rest_id, "slot": slot_label, "guests": guests},
+        },
+    ]
+    for p in im_prods[:4]:
+        feed.append({
+            "type": "instamart",
+            "title": p.get("name"),
+            "subtitle": "Party supplies (staged)",
+            "meta": {"product_id": p.get("product_id")},
+        })
+    feed.append({
+        "type": "restaurant",
+        "title": "Gelato dessert @ 10 PM",
+        "subtitle": f"Staged cart ₹{food_total} — I'll remind you to place at 10 PM",
+        "meta": {"restaurant_id": gelato_rid},
+    })
+
+    reply = (
+        f"Here's your evening bundle for **{event_title}**:\n\n"
+        f"1. **Dineout** — {dine_name}, table for {guests} at {slot_label}. Reply **confirm table** to book.\n"
+        f"2. **Instamart** — party supplies staged (₹{im_total}). Reply **confirm groceries** to checkout.\n"
+        f"3. **Food** — gelato dessert staged (₹{food_total}). Swiggy can't schedule delivery yet — "
+        f"I'll remind you at **10 PM** to place; reply **confirm dessert** when ready.\n\n"
+        "Nothing has been placed automatically."
+    )
+    yield {"type": "feed", "payload": {"items": feed}}
+    yield {"type": "assistant", "payload": {"text": reply}}
+    yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": feed}}
+
+
 def _error_bundle(message: str) -> Generator[dict[str, Any], None, None]:
     feed = [{"type": "error", "title": "Local MCP mock", "subtitle": message, "meta": {}}]
     yield {"type": "thinking", "payload": {"text": "Caught a tool error."}}
@@ -348,14 +500,73 @@ def _error_bundle(message: str) -> Generator[dict[str, Any], None, None]:
     yield {"type": "done", "payload": {"assistant_reply": None, "feed_items": feed}}
 
 
+def _confirm_table(ctx: dict[str, Any]) -> Generator[dict[str, Any], None, None]:
+    guests = int(ctx.get("partySize") or 6)
+    bk = call_tool("dineout", "book_table", {
+        "restaurantId": "do_italian_804",
+        "partySize": guests,
+        "slot": "20:00",
+        "slotId": 4204,
+    })
+    yield _thinking("Executor • dineout book_table confirmed.")
+    yield {"type": "tool", "payload": _sse_tool("dineout", "/dineout", "book_table", {}, bk)}
+    feed = [{
+        "type": "booking",
+        "title": str(bk.get("venue_name", "Restaurant") if isinstance(bk, dict) else "Restaurant"),
+        "subtitle": "CONFIRMED",
+        "meta": bk if isinstance(bk, dict) else {},
+    }]
+    reply = "Table **confirmed** via book_table (mock)."
+    yield {"type": "feed", "payload": {"items": feed}}
+    yield {"type": "assistant", "payload": {"text": reply}}
+    yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": feed}}
+
+
+def _confirm_groceries(sid: str, ctx: dict[str, Any]) -> Generator[dict[str, Any], None, None]:
+    cart = call_tool("im", "get_cart", {"requestId": sid})
+    yield _thinking("Executor • im get_cart before checkout.")
+    yield {"type": "tool", "payload": _sse_tool("im", "/im", "get_cart", {}, cart)}
+    out = call_tool("im", "checkout", {"requestId": sid})
+    yield {"type": "tool", "payload": _sse_tool("im", "/im", "checkout", {}, out)}
+    reply = "Instamart **checkout** complete (mock)."
+    yield {"type": "assistant", "payload": {"text": reply}}
+    yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": []}}
+
+
+def _confirm_dessert(sid: str, ctx: dict[str, Any]) -> Generator[dict[str, Any], None, None]:
+    addr_any = call_tool("food", "get_addresses", {})
+    addrs = addr_any if isinstance(addr_any, dict) else {}
+    addr_id = _pick_address_id(ctx, addrs)
+    cart = call_tool("food", "get_food_cart", {"requestId": sid, "addressId": addr_id})
+    yield {"type": "tool", "payload": _sse_tool("food", "/food", "get_food_cart", {}, cart)}
+    out = call_tool("food", "place_food_order", {"requestId": sid, "addressId": addr_id})
+    yield {"type": "tool", "payload": _sse_tool("food", "/food", "place_food_order", {}, out)}
+    reply = "Dessert **placed** via place_food_order (mock). 10 PM reminder is manual in v1."
+    yield {"type": "assistant", "payload": {"text": reply}}
+    yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": []}}
+
+
 def run_agent_stream(user_message: str, context: dict[str, Any] | None):
     """Yield SSE events: thinking | tool | feed | assistant | done."""
     ctx = context or {}
     sid = str(uuid.uuid4())
 
+    mlow = user_message.lower()
+    if "confirm table" in mlow:
+        yield from _confirm_table(ctx)
+        return
+    if "confirm groceries" in mlow or "confirm grocery" in mlow:
+        yield from _confirm_groceries(sid, ctx)
+        return
+    if "confirm dessert" in mlow:
+        yield from _confirm_dessert(sid, ctx)
+        return
+
     vertical = _detect_vertical(user_message, ctx)
     try:
-        if vertical == "food":
+        if vertical == "chrono":
+            gen = run_chrono_host(sid, ctx)
+        elif vertical == "food":
             gen = (
                 run_food_pizza_order(sid, ctx)
                 if _is_food_pizza_flow(user_message)

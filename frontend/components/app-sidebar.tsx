@@ -27,7 +27,7 @@ import { nexusToast } from "@/lib/nexus-toast-bus";
 import { cn } from "@/lib/utils";
 
 const sidebarNeoHover = {
-  scale: 1.02,
+  y: -2,
   boxShadow: "6px 6px 0px 0px rgba(0,0,0,1)",
   transition: neoSpring,
 };
@@ -66,7 +66,7 @@ function SidebarLink({
       whileTap={sidebarNeoTap}
       onClick={onClick}
       className={cn(
-        "flex w-full max-w-full items-center gap-3 border-2 border-black px-3 py-3 text-left font-display text-sm font-bold shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-colors",
+        "flex w-full max-w-full items-center gap-3 border-2 border-black px-3 py-3 text-left font-display text-sm font-bold shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-colors will-change-transform",
         active
           ? "bg-indigo-50 text-indigo-900 [&_svg]:text-indigo-900"
           : "bg-white text-slate-800 hover:bg-slate-50 [&_svg]:text-slate-800"
@@ -106,7 +106,7 @@ export function AppSidebar({
         <NexusLockup />
       </motion.div>
 
-      <div className="neo-scrollbar flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-2 overflow-x-hidden overflow-y-auto pb-1">
+      <div className="neo-scrollbar flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-2 overflow-x-hidden overflow-y-auto px-1.5 pb-4 pt-1">
         <motion.button
           type="button"
           variants={fadeUp}
@@ -130,7 +130,7 @@ export function AppSidebar({
           <span>New Chat</span>
         </motion.button>
 
-        <div className="mt-4 space-y-2">
+        <div className="mt-4 space-y-3 pb-2">
           <SidebarLink
             icon={<Library size={18} />}
             label="Library"

@@ -61,7 +61,12 @@ def call_tool(server: Vertical, method: str, params: dict[str, Any]) -> Any:
             if isinstance(d, dict) and "categories" in d:
                 return "menu loaded"
             if isinstance(d, dict) and "slots" in d:
-                return f"{len(d['slots'])} slots"
+                sl = d["slots"]
+                return f"{len(sl)} slots"
+            if isinstance(d, dict) and "locations" in d:
+                return f"{len(d['locations'])} locations"
+            if isinstance(d, dict) and "cleared" in d:
+                return "cart cleared"
             return "ok"
         err = envelope.get("error") or {}
         return f"error: {err.get('message', err)}"

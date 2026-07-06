@@ -1,7 +1,14 @@
 const KEY = "nexus-demo-settings-v1";
 
 /** Reviewer presets for Swiggy credential pitch demos (frontend-only mocks). */
-export type NexusReviewerScenario = "" | "deadlock" | "flowstate" | "zerowaste";
+export type NexusReviewerScenario =
+  | ""
+  | "deadlock"
+  | "flowstate"
+  | "zerowaste"
+  | "chrono_host"
+  | "sentiment"
+  | "dialectic";
 
 export type NexusDemoSettings = {
   devMode: boolean;
@@ -10,6 +17,7 @@ export type NexusDemoSettings = {
   signalDeepWorkBlock: boolean;
   signalRainInPune: boolean;
   signalWatchParty: boolean;
+  signalMoodScore: number;
   reviewerScenario: NexusReviewerScenario;
   deadlockPartySize: number;
   deadlockBudgetInr: number;
@@ -24,6 +32,7 @@ export const DEMO_SETTINGS_DEFAULTS: NexusDemoSettings = {
   signalDeepWorkBlock: false,
   signalRainInPune: false,
   signalWatchParty: false,
+  signalMoodScore: 0.35,
   reviewerScenario: "",
   deadlockPartySize: 5,
   deadlockBudgetInr: 800,
@@ -39,7 +48,10 @@ function parse(raw: string | null): NexusDemoSettings {
     const scenario =
       o.reviewerScenario === "deadlock" ||
       o.reviewerScenario === "flowstate" ||
-      o.reviewerScenario === "zerowaste"
+      o.reviewerScenario === "zerowaste" ||
+      o.reviewerScenario === "chrono_host" ||
+      o.reviewerScenario === "sentiment" ||
+      o.reviewerScenario === "dialectic"
         ? o.reviewerScenario
         : "";
 
@@ -61,6 +73,10 @@ function parse(raw: string | null): NexusDemoSettings {
         typeof o.signalWatchParty === "boolean"
           ? o.signalWatchParty
           : d.signalWatchParty,
+      signalMoodScore:
+        typeof o.signalMoodScore === "number" && Number.isFinite(o.signalMoodScore)
+          ? Math.min(1, Math.max(0, o.signalMoodScore))
+          : d.signalMoodScore,
       reviewerScenario: scenario,
       deadlockPartySize:
         typeof o.deadlockPartySize === "number" && Number.isFinite(o.deadlockPartySize)
@@ -94,12 +110,23 @@ export function orchestrationContextFromSettings(
       deepWorkBlock: s.signalDeepWorkBlock,
       rainInPune: s.signalRainInPune,
       watchParty: s.signalWatchParty,
+      moodScore: s.signalMoodScore,
     },
     scenario: s.reviewerScenario || undefined,
     partySize: s.deadlockPartySize,
     budgetInr: s.deadlockBudgetInr,
     city: s.deadlockCity,
     recipeHint: s.zerowasteRecipeHint,
+    event:
+      s.reviewerScenario === "chrono_host"
+        ? {
+            title: "Housewarming Saturday",
+            start: "2026-07-12T19:00:00+05:30",
+            end: "2026-07-12T23:00:00+05:30",
+            guests: 12,
+            cuisineHint: "italian",
+          }
+        : undefined,
   };
 }
 

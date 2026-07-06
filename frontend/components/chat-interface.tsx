@@ -7,12 +7,15 @@ import {
   PlusCircle,
   Terminal,
 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { NexusLogoMark } from "@/components/nexus-logo-mark";
+import { renderSimpleMarkdown, ToolTraceTheater } from "@/components/tool-trace-theater";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { FeedItem } from "@/lib/api";
 import { postChatStream } from "@/lib/api";
+import { getToolCoverage, recordToolFromStream } from "@/lib/mcp-client";
+import { getOrchestratorInfo } from "@/lib/orchestrator-info";
 import { neoSpring, slideFromLeft, slideFromRight } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +28,10 @@ export type ChatInterfaceProps = {
   sessionHints?: boolean;
   /** Passed to same-origin mock orchestration (`/api/chat/stream`). */
   chatContext?: Record<string, unknown>;
+  /** Prefills the composer when a reviewer preset is selected. */
+  suggestedPrompt?: string;
+  onRegisterSend?: (fn: (text: string) => void) => void;
+  onChatComplete?: (assistantText: string) => void;
 };
 
 export default function ChatInterface({
@@ -32,26 +39,58 @@ export default function ChatInterface({
   devMode,
   sessionHints = true,
   chatContext,
+  suggestedPrompt,
+  onRegisterSend,
+  onChatComplete,
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
+  const isChrono =
+    chatContext?.scenario === "chrono_host" ||
+    suggestedPrompt?.toLowerCase().includes("evening");
+
+  useEffect(() => {
+    if (suggestedPrompt) setInput(suggestedPrompt);
+  }, [suggestedPrompt]);
   const [busy, setBusy] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [thinking, setThinking] = useState<string[]>([]);
   const [showThinking, setShowThinking] = useState(true);
   const [rpcLogs, setRpcLogs] = useState<string[]>([]);
+  const [liveTool, setLiveTool] = useState<string | null>(null);
+  const [streamPreview, setStreamPreview] = useState("");
+  const [toolCount, setToolCount] = useState(0);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const orch = getOrchestratorInfo();
+
+  const scrollToBottom = useCallback(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [msgs, thinking, busy, streamPreview, scrollToBottom]);
+
+  useEffect(() => {
+    setToolCount(getToolCoverage().used);
+    const sync = () => setToolCount(getToolCoverage().used);
+    window.addEventListener("nexus-mcp-call", sync);
+    return () => window.removeEventListener("nexus-mcp-call", sync);
+  }, []);
 
   const appendLog = useCallback((entry: Record<string, unknown>) => {
     const line = JSON.stringify(entry, null, 2);
     setRpcLogs((prev) => [...prev.slice(-80), line]);
   }, []);
 
-  const runSend = useCallback(async () => {
-    const text = input.trim();
+  const runSend = useCallback(async (overrideText?: string) => {
+    const text = (overrideText ?? input).trim();
     if (!text || busy) return;
 
-    setInput("");
+    if (!overrideText) setInput("");
     setBusy(true);
     setThinking([]);
+    setLiveTool(null);
+    setStreamPreview("");
     onFeedItems([]);
     setRpcLogs([]);
 
@@ -63,9 +102,15 @@ export default function ChatInterface({
     await postChatStream(text, chatContext, (ev) => {
       if (ev.type === "thinking") {
         setThinking((t) => [...t, ev.payload.text]);
+        setStreamPreview(ev.payload.text);
       }
       if (ev.type === "tool") {
         appendLog(ev.payload);
+        recordToolFromStream(ev.payload);
+        setToolCount(getToolCoverage().used);
+        const method = String(ev.payload.method ?? "mcp_tool");
+        setLiveTool(method);
+        setStreamPreview(`Executor · ${method}`);
       }
       if (ev.type === "feed") {
         onFeedItems(ev.payload.items);
@@ -96,14 +141,40 @@ export default function ChatInterface({
       },
     ]);
 
+    onChatComplete?.(assistantText);
+    setLiveTool(null);
+    setStreamPreview("");
     setBusy(false);
-  }, [appendLog, busy, chatContext, input, onFeedItems]);
+  }, [appendLog, busy, chatContext, input, onChatComplete, onFeedItems]);
+
+  const runSendRef = useRef(runSend);
+  runSendRef.current = runSend;
+
+  useEffect(() => {
+    onRegisterSend?.((text: string) => {
+      void runSendRef.current(text);
+    });
+  }, [onRegisterSend]);
 
   return (
-    <div className="flex h-full min-h-[65vh] flex-col gap-4">
+    <div className="flex h-full min-h-0 max-h-[min(72vh,820px)] flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2 border-2 border-black bg-slate-900 px-3 py-2 text-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+        <span className="font-display text-[10px] font-black uppercase tracking-widest text-emerald-300">
+          {orch.label}
+        </span>
+        <span className="font-mono text-[10px] text-slate-400">
+          {orch.llmModel ?? "No LLM · deterministic MCP graph"}
+        </span>
+        {(busy || toolCount > 0) && (
+          <span className="ml-auto font-mono text-[10px] font-bold text-amber-300">
+            MCP {toolCount}/33
+          </span>
+        )}
+      </div>
+
       <div
         id="nexus-chat-scroll"
-        className="neo-scrollbar min-h-0 flex-1 space-y-6 overflow-y-auto pr-2"
+        className="neo-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto pr-1"
       >
         {msgs.length === 0 && (
           <motion.p
@@ -113,10 +184,19 @@ export default function ChatInterface({
             className="bento-card border-dashed bg-slate-50 p-4 font-display text-sm text-slate-600"
           >
             {sessionHints ? (
-              <>
-                Ask anything — e.g. snacks for coding, team dinner, or biryani
-                delivery. Synthetic Swiggy-style tools only.
-              </>
+              isChrono ? (
+                <>
+                  <strong className="text-violet-800">Chrono-Host armed.</strong>{" "}
+                  Send the prefilled prompt (or any message) to stage Dineout +
+                  Instamart + Food dessert in one bundle — check the feed panel
+                  on the right.
+                </>
+              ) : (
+                <>
+                  Ask anything — e.g. snacks for coding, team dinner, or biryani
+                  delivery. Synthetic Swiggy-style tools only.
+                </>
+              )
             ) : (
               <>Send a message to start. Mock MCP only — not real orders.</>
             )}
@@ -169,7 +249,7 @@ export default function ChatInterface({
               <div className="min-w-0 flex-1">
                 <div className="bento-card px-5 py-4">
                   <p className="font-sans text-sm font-medium leading-relaxed text-black">
-                    {m.text}
+                    {renderSimpleMarkdown(m.text)}
                   </p>
                   <div className="mt-4 flex flex-wrap items-center gap-2 border-t-2 border-black/5 pt-3">
                     <span className="border-2 border-black bg-slate-100 px-2 py-0.5 font-display text-[10px] font-black uppercase tracking-wider">
@@ -186,35 +266,45 @@ export default function ChatInterface({
         ))}
 
         <AnimatePresence>
-        {busy && (
-          <motion.div
-            key="typing"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={neoSpring}
-            className="flex items-start gap-3"
-          >
+          {busy && (
             <motion.div
-              className="flex h-12 w-12 shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-              animate={{ opacity: [0.75, 1, 0.75] }}
-              transition={{ repeat: Infinity, duration: 1.6, ease: "easeInOut" }}
+              key="typing"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={neoSpring}
+              className="flex items-start gap-3"
             >
-              <NexusLogoMark className="h-full w-full" aria-label="Nexus is typing" />
-            </motion.div>
-            <div className="bento-card flex w-24 items-center justify-center py-4">
-              <div className="flex gap-1">
-                <span className="h-1 w-1 animate-bounce rounded-full bg-slate-500 [animation-delay:-0.3s]" />
-                <span className="h-1 w-1 animate-bounce rounded-full bg-slate-500 [animation-delay:-0.15s]" />
-                <span className="h-1 w-1 animate-bounce rounded-full bg-slate-500" />
+              <motion.div
+                className="flex h-12 w-12 shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                animate={{ opacity: [0.75, 1, 0.75] }}
+                transition={{ repeat: Infinity, duration: 1.6, ease: "easeInOut" }}
+              >
+                <NexusLogoMark className="h-full w-full" aria-label="Nexus is typing" />
+              </motion.div>
+              <div className="bento-card flex min-w-0 flex-1 flex-col gap-2 py-3 pl-4 pr-4">
+                {liveTool ? (
+                  <p className="font-mono text-[11px] font-bold text-amber-800">
+                    ⚡ {liveTool}
+                  </p>
+                ) : streamPreview ? (
+                  <p className="font-mono text-[11px] text-violet-700">{streamPreview}</p>
+                ) : (
+                  <div className="flex gap-1">
+                    <span className="h-1 w-1 animate-bounce rounded-full bg-slate-500 [animation-delay:-0.3s]" />
+                    <span className="h-1 w-1 animate-bounce rounded-full bg-slate-500 [animation-delay:-0.15s]" />
+                    <span className="h-1 w-1 animate-bounce rounded-full bg-slate-500" />
+                  </div>
+                )}
               </div>
-            </div>
-          </motion.div>
-        )}
+            </motion.div>
+          )}
         </AnimatePresence>
+
+        <div ref={bottomRef} className="h-px shrink-0" aria-hidden />
       </div>
 
-      <div className="border-t-2 border-dashed border-black/10 pt-4">
+      <div className="shrink-0 border-t-2 border-dashed border-black/10 pt-2">
         <motion.button
           type="button"
           onClick={() => setShowThinking((s) => !s)}
@@ -276,7 +366,8 @@ export default function ChatInterface({
               <Terminal className="h-4 w-4" />
               JSON-RPC log
             </div>
-            <ScrollArea className="h-36 rounded border-2 border-black bg-white">
+            <ToolTraceTheater logs={rpcLogs} className="mb-2" />
+            <ScrollArea className="h-24 rounded border-2 border-black bg-white">
               <pre className="p-2 font-mono text-[10px] text-slate-700">
                 {rpcLogs.length === 0
                   ? "// Tool calls after send…"

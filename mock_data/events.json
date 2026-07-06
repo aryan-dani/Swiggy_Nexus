@@ -1,0 +1,34 @@
+{
+  "events": [
+    {
+      "id": "evt_team_dinner",
+      "scenario": "team_dinner",
+      "title": "Team dinner Friday",
+      "start": "2026-07-11T20:00:00+05:30",
+      "end": "2026-07-11T23:00:00+05:30",
+      "guests": 6,
+      "cuisineHint": "asian",
+      "city": "Pune"
+    },
+    {
+      "id": "evt_watch_party",
+      "scenario": "watch_party",
+      "title": "IPL watch party",
+      "start": "2026-07-10T19:30:00+05:30",
+      "end": "2026-07-10T23:30:00+05:30",
+      "guests": 8,
+      "cuisineHint": "snacks",
+      "city": "Pune"
+    },
+    {
+      "id": "evt_housewarming",
+      "scenario": "chrono_host",
+      "title": "Housewarming Saturday",
+      "start": "2026-07-12T19:00:00+05:30",
+      "end": "2026-07-12T23:00:00+05:30",
+      "guests": 12,
+      "cuisineHint": "italian",
+      "city": "Pune"
+    }
+  ]
+}

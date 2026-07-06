@@ -2,9 +2,9 @@ import type { FeedItem } from "@/lib/api";
 import type { NexusCardResult } from "@/components/nexus-result-card";
 
 /** Bundled under `public/images/demo` — works offline / no hotlink blocks. */
-const FOOD_IMG = "/images/demo/food.jpg";
-const MART_IMG = "/images/demo/grocery.jpg";
-const DINE_IMG = "/images/demo/dineout.jpg";
+const FOOD_IMG = "/images/demo/food.svg";
+const MART_IMG = "/images/demo/grocery.svg";
+const DINE_IMG = "/images/demo/dineout.svg";
 
 export function mapFeedItemToNexusCard(
   item: FeedItem,
@@ -27,6 +27,7 @@ export function mapFeedItemToNexusCard(
       time: eta != null ? `~${eta} min` : undefined,
       price: undefined,
       imageUrl: FOOD_IMG,
+      meta: item.meta,
     };
   }
 
@@ -41,6 +42,7 @@ export function mapFeedItemToNexusCard(
       price: price != null ? `₹${price}` : undefined,
       items: undefined,
       imageUrl: MART_IMG,
+      meta: item.meta,
     };
   }
 
@@ -56,6 +58,7 @@ export function mapFeedItemToNexusCard(
         ? "Slots open"
         : undefined,
       imageUrl: DINE_IMG,
+      meta: item.meta,
     };
   }
 
@@ -91,6 +94,18 @@ export function mapFeedItemToNexusCard(
       description: item.subtitle || "Join link",
       rating: undefined,
       offer: "One-tap RSVP (mock)",
+      imageUrl: DINE_IMG,
+    };
+  }
+
+  if (item.type === "event_bundle") {
+    return {
+      id,
+      type: "dineout",
+      title: item.title,
+      description: item.subtitle || "Multi-vertical evening plan",
+      rating: undefined,
+      offer: "Dineout + Instamart + Food",
       imageUrl: DINE_IMG,
     };
   }
