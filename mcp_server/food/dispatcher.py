@@ -57,6 +57,7 @@ def handle_search_restaurants(params: dict[str, Any]) -> tuple[bool, dict | None
     simulated_latency_jitter_ms()
     address_id = get_param(params, "addressId", "address_id")
     query = str(get_param(params, "query", "q") or "").lower().strip()
+    sort_by = str(get_param(params, "sortBy") or "").lower().strip()
     if not address_id:
         return _error("VALIDATION", "addressId is required")
     addr = get_address_by_id(str(address_id))
@@ -71,7 +72,17 @@ def handle_search_restaurants(params: dict[str, Any]) -> tuple[bool, dict | None
             or any(query in c.lower() for c in r.get("cuisines", []))
             or query in str(r.get("tag", "")).lower()
         ] or list(RESTAURANTS)
-    random.shuffle(rows)
+
+    # Optional deterministic sorting instead of random shuffle
+    if sort_by == "rating":
+        rows = sorted(rows, key=lambda r: r.get("rating", 0), reverse=True)
+    elif sort_by == "eta":
+        rows = sorted(rows, key=lambda r: r.get("eta_mins_min", 30))
+    elif sort_by == "distance":
+        rows = sorted(rows, key=lambda r: r.get("distance_km", 5.0))
+    else:
+        random.shuffle(rows)
+
     out_rows = [_restaurant_row(r) for r in rows[:8]]
     data = {
         "addressId": address_id,
@@ -287,6 +298,40 @@ def handle_track_food_order(params: dict[str, Any]) -> tuple[bool, dict | None, 
     return True, data, None
 
 
+def handle_get_restaurant_details(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    """Return rich Food restaurant details: full menu counts, cuisines, ETA, amenities."""
+    simulated_latency_jitter_ms()
+    rid = str(get_param(params, "restaurantId", "restaurant_id") or "").strip()
+    if not rid:
+        return _error("VALIDATION", "restaurantId is required")
+    rest = next((r for r in RESTAURANTS if r["restaurant_id"] == rid), None)
+    if not rest:
+        return _error("NOT_FOUND", f"Food restaurant {rid} not found")
+    menu = MENU_BY_RESTAURANT.get(rid, {})
+    item_count = sum(len(cat.get("items", [])) for cat in menu.get("categories", []))
+    data = {
+        "restaurantId": rid,
+        "id": rid,
+        "name": rest["name"],
+        "rating": rest["rating"],
+        "cuisines": rest.get("cuisines", []),
+        "availabilityStatus": rest.get("availability_status", "OPEN"),
+        "eta_mins": pick_eta(rest),
+        "deliveryTimeRange": f"{rest.get('eta_mins_min', 25)}-{rest.get('eta_mins_max', 40)} MIN",
+        "price_for_two_inr": rest.get("price_for_two_inr"),
+        "tag": rest.get("tag"),
+        "menu_item_count": item_count,
+        "category_count": len(menu.get("categories", [])),
+        "amenities": ["Free delivery on first order", "FSSAI certified", "Contactless delivery"],
+        "offers": [
+            {"title": "40% off up to ₹80", "code": "SWIGGY40"},
+            {"title": "Free delivery above ₹199", "code": None},
+        ],
+    }
+    tool_log("food", "get_restaurant_details", params or {}, rest["name"])
+    return True, data, None
+
+
 def handle_search_menu(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
     """Cross-restaurant dish search with veg filter + pagination."""
     simulated_latency_jitter_ms()
@@ -371,6 +416,7 @@ _TOOLS: dict[str, Any] = {
     "search_restaurants": handle_search_restaurants,
     "get_menu": handle_get_menu,
     "search_menu": handle_search_menu,
+    "get_restaurant_details": handle_get_restaurant_details,
     "add_to_cart": handle_add_to_cart,
     "get_food_cart": handle_get_food_cart,
     "flush_food_cart": handle_flush_food_cart,

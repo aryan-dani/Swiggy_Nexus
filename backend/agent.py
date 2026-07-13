@@ -1,11 +1,18 @@
-"""Streaming Nexus agent over **local mock** MCP (`/food`, `/im`, `/dineout`)."""
+"""Streaming Nexus agent over **local mock** MCP (`/food`, `/im`, `/dineout`).
+
+Deterministic scripted demo flows. Activated when no GROQ_API_KEY is set
+or when a reviewer scenario is specified in the context.
+"""
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any, Generator, Literal
 
 from backend.mcp_client import LocalMCPError, call_tool
+
+log = logging.getLogger(__name__)
 
 Vertical = Literal["food", "im", "dineout", "chrono"]
 
@@ -82,7 +89,8 @@ def _thinking(text: str) -> dict[str, Any]:
     return {"type": "thinking", "payload": {"text": text}}
 
 
-def _sse_tool(server_key: Vertical, http_path: str, method: str, params: dict[str, Any], data: Any) -> dict[str, Any]:
+def _sse_tool(server_key: str, http_path: str, method: str, params: dict[str, Any], data: Any) -> dict[str, Any]:
+    """Build a JSON-RPC-shaped SSE tool event payload."""
     return {
         "jsonrpc": "2.0",
         "vertical": server_key,
@@ -500,50 +508,52 @@ def _error_bundle(message: str) -> Generator[dict[str, Any], None, None]:
     yield {"type": "done", "payload": {"assistant_reply": None, "feed_items": feed}}
 
 
-def _confirm_table(ctx: dict[str, Any]) -> Generator[dict[str, Any], None, None]:
-    guests = int(ctx.get("partySize") or 6)
-    bk = call_tool("dineout", "book_table", {
-        "restaurantId": "do_italian_804",
-        "partySize": guests,
-        "slot": "20:00",
-        "slotId": 4204,
-    })
-    yield _thinking("Executor • dineout book_table confirmed.")
-    yield {"type": "tool", "payload": _sse_tool("dineout", "/dineout", "book_table", {}, bk)}
-    feed = [{
-        "type": "booking",
-        "title": str(bk.get("venue_name", "Restaurant") if isinstance(bk, dict) else "Restaurant"),
-        "subtitle": "CONFIRMED",
-        "meta": bk if isinstance(bk, dict) else {},
-    }]
-    reply = "Table **confirmed** via book_table (mock)."
-    yield {"type": "feed", "payload": {"items": feed}}
-    yield {"type": "assistant", "payload": {"text": reply}}
-    yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": feed}}
+def _confirm_leg(
+    leg: str, sid: str, ctx: dict[str, Any]
+) -> Generator[dict[str, Any], None, None]:
+    """Generic confirm handler for table / groceries / dessert legs."""
+    if leg == "table":
+        guests = int(ctx.get("partySize") or 6)
+        bk = call_tool("dineout", "book_table", {
+            "restaurantId": "do_italian_804",
+            "partySize": guests,
+            "slot": "20:00",
+            "slotId": 4204,
+        })
+        yield _thinking("Executor • dineout book_table confirmed.")
+        yield {"type": "tool", "payload": _sse_tool("dineout", "/dineout", "book_table", {}, bk)}
+        feed = [{
+            "type": "booking",
+            "title": str(bk.get("venue_name", "Restaurant") if isinstance(bk, dict) else "Restaurant"),
+            "subtitle": "CONFIRMED",
+            "meta": bk if isinstance(bk, dict) else {},
+        }]
+        reply = "Table **confirmed** via book_table (mock)."
+        yield {"type": "feed", "payload": {"items": feed}}
+        yield {"type": "assistant", "payload": {"text": reply}}
+        yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": feed}}
 
+    elif leg == "groceries":
+        cart = call_tool("im", "get_cart", {"requestId": sid})
+        yield _thinking("Executor • im get_cart before checkout.")
+        yield {"type": "tool", "payload": _sse_tool("im", "/im", "get_cart", {}, cart)}
+        out = call_tool("im", "checkout", {"requestId": sid})
+        yield {"type": "tool", "payload": _sse_tool("im", "/im", "checkout", {}, out)}
+        reply = "Instamart **checkout** complete (mock)."
+        yield {"type": "assistant", "payload": {"text": reply}}
+        yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": []}}
 
-def _confirm_groceries(sid: str, ctx: dict[str, Any]) -> Generator[dict[str, Any], None, None]:
-    cart = call_tool("im", "get_cart", {"requestId": sid})
-    yield _thinking("Executor • im get_cart before checkout.")
-    yield {"type": "tool", "payload": _sse_tool("im", "/im", "get_cart", {}, cart)}
-    out = call_tool("im", "checkout", {"requestId": sid})
-    yield {"type": "tool", "payload": _sse_tool("im", "/im", "checkout", {}, out)}
-    reply = "Instamart **checkout** complete (mock)."
-    yield {"type": "assistant", "payload": {"text": reply}}
-    yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": []}}
-
-
-def _confirm_dessert(sid: str, ctx: dict[str, Any]) -> Generator[dict[str, Any], None, None]:
-    addr_any = call_tool("food", "get_addresses", {})
-    addrs = addr_any if isinstance(addr_any, dict) else {}
-    addr_id = _pick_address_id(ctx, addrs)
-    cart = call_tool("food", "get_food_cart", {"requestId": sid, "addressId": addr_id})
-    yield {"type": "tool", "payload": _sse_tool("food", "/food", "get_food_cart", {}, cart)}
-    out = call_tool("food", "place_food_order", {"requestId": sid, "addressId": addr_id})
-    yield {"type": "tool", "payload": _sse_tool("food", "/food", "place_food_order", {}, out)}
-    reply = "Dessert **placed** via place_food_order (mock). 10 PM reminder is manual in v1."
-    yield {"type": "assistant", "payload": {"text": reply}}
-    yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": []}}
+    elif leg == "dessert":
+        addr_any = call_tool("food", "get_addresses", {})
+        addrs = addr_any if isinstance(addr_any, dict) else {}
+        addr_id = _pick_address_id(ctx, addrs)
+        cart = call_tool("food", "get_food_cart", {"requestId": sid, "addressId": addr_id})
+        yield {"type": "tool", "payload": _sse_tool("food", "/food", "get_food_cart", {}, cart)}
+        out = call_tool("food", "place_food_order", {"requestId": sid, "addressId": addr_id})
+        yield {"type": "tool", "payload": _sse_tool("food", "/food", "place_food_order", {}, out)}
+        reply = "Dessert **placed** via place_food_order (mock). 10 PM reminder is manual in v1."
+        yield {"type": "assistant", "payload": {"text": reply}}
+        yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": []}}
 
 
 def run_agent_stream(user_message: str, context: dict[str, Any] | None):
@@ -553,13 +563,13 @@ def run_agent_stream(user_message: str, context: dict[str, Any] | None):
 
     mlow = user_message.lower()
     if "confirm table" in mlow:
-        yield from _confirm_table(ctx)
+        yield from _confirm_leg("table", sid, ctx)
         return
     if "confirm groceries" in mlow or "confirm grocery" in mlow:
-        yield from _confirm_groceries(sid, ctx)
+        yield from _confirm_leg("groceries", sid, ctx)
         return
     if "confirm dessert" in mlow:
-        yield from _confirm_dessert(sid, ctx)
+        yield from _confirm_leg("dessert", sid, ctx)
         return
 
     vertical = _detect_vertical(user_message, ctx)

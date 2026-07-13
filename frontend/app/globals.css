@@ -37,6 +37,42 @@
     --chart-3: 48 100% 50%;
     --chart-4: 0 72% 51%;
     --chart-5: 222 47% 11%;
+    /* Skeleton shimmer colors */
+    --skeleton-base: 210 40% 93%;
+    --skeleton-shine: 210 40% 98%;
+  }
+
+  /* ── Dark mode ──────────────────────────────────────────────────── */
+  .dark {
+    --background: 222 47% 6%;
+    --foreground: 210 40% 96%;
+    --card: 222 47% 9%;
+    --card-foreground: 210 40% 96%;
+    --popover: 222 47% 9%;
+    --popover-foreground: 210 40% 96%;
+    --primary: 252 91% 67%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 222 47% 14%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 222 47% 14%;
+    --muted-foreground: 215 16% 60%;
+    --accent: 222 47% 14%;
+    --accent-foreground: 210 40% 96%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 210 40% 20%;
+    --input: 210 40% 20%;
+    --ring: 252 91% 67%;
+    --sidebar: 222 47% 7%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-primary: 252 91% 67%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 222 47% 14%;
+    --sidebar-accent-foreground: 210 40% 96%;
+    --sidebar-border: 210 40% 16%;
+    --sidebar-ring: 252 91% 67%;
+    --skeleton-base: 222 47% 14%;
+    --skeleton-shine: 222 47% 18%;
   }
 }
 
@@ -47,11 +83,25 @@
   body {
     @apply bg-white text-on-surface font-sans antialiased;
   }
+  .dark body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+
+  /* ── Accessibility: focus-visible ring ────────────────────────── */
+  :focus-visible {
+    @apply outline-none ring-2 ring-offset-2;
+    ring-color: hsl(var(--ring));
+  }
 }
 
 @layer components {
   .bento-card {
     @apply border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all;
+  }
+
+  .dark .bento-card {
+    @apply border-white/20 bg-slate-900 shadow-[4px_4px_0px_0px_rgba(255,255,255,0.15)];
   }
 
   .bento-card-interactive {
@@ -62,13 +112,45 @@
     @apply border-2 border-black bg-white px-4 py-2 font-display text-xs font-bold uppercase tracking-widest shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all hover:bg-slate-50 active:translate-x-px active:translate-y-px active:shadow-none;
   }
 
+  .dark .bento-button {
+    @apply border-white/20 bg-slate-800 text-white hover:bg-slate-700;
+  }
+
   .bento-input {
     @apply border-2 border-black bg-white px-4 py-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] outline-none transition-all focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)];
+  }
+
+  .dark .bento-input {
+    @apply border-white/20 bg-slate-800 text-white;
   }
 
   /* Flat canvas — matches product reference (solid neo, no tinted mesh). */
   .mesh-bg {
     background-color: #ffffff;
+  }
+  .dark .mesh-bg {
+    background-color: hsl(var(--background));
+  }
+
+  /* ── Skeleton loading cards ───────────────────────────────────── */
+  .skeleton {
+    @apply relative overflow-hidden rounded-sm;
+    background-color: hsl(var(--skeleton-base));
+  }
+  .skeleton::after {
+    content: "";
+    @apply absolute inset-0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      hsl(var(--skeleton-shine)) 50%,
+      transparent 100%
+    );
+    animation: skeleton-shimmer 1.6s infinite;
+  }
+
+  .skeleton-card {
+    @apply bento-card skeleton h-64 w-[260px] shrink-0;
   }
 }
 
@@ -100,4 +182,34 @@
     scrollbar-color: #cbd5e1 #f8fafc;
     scrollbar-width: thin;
   }
+
+  /* Timestamp micro-text */
+  .msg-timestamp {
+    @apply text-[9px] font-mono tracking-wider opacity-40;
+  }
+}
+
+/* ── Keyframes ───────────────────────────────────────────────────── */
+@keyframes skeleton-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes float-idle {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.4); }
+  70% { box-shadow: 0 0 0 8px hsl(var(--primary) / 0); }
+  100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0); }
+}
+
+.animate-float {
+  animation: float-idle 3s ease-in-out infinite;
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2s cubic-bezier(0.455, 0.03, 0.515, 0.955) infinite;
 }

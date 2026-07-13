@@ -22,9 +22,29 @@ const plusJakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Swiggy Nexus — Agent POC",
+  title: "Swiggy Nexus — Agentic AI Demo",
   description:
-    "Demo assistant orchestrating mocked Swiggy MCP tools (Food, Instamart, Dineout). Not affiliated with Swiggy.",
+    "An autonomous agentic copilot orchestrating Swiggy's Food, Instamart, and Dineout verticals via mocked MCP tools. Built for the Builders Club hackathon.",
+  keywords: ["swiggy", "agentic ai", "mcp", "food delivery", "instamart", "dineout", "llm orchestration"],
+  authors: [{ name: "Swiggy Builders Club" }],
+  openGraph: {
+    title: "Swiggy Nexus — Agentic AI Demo",
+    description:
+      "Watch an AI agent autonomously search restaurants, manage carts, and book tables across Swiggy's three verticals — all in one conversation.",
+    type: "website",
+    locale: "en_IN",
+    siteName: "Swiggy Nexus",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Swiggy Nexus — Agentic AI Demo",
+    description:
+      "Autonomous AI copilot for Food, Instamart, and Dineout via mocked MCP tools.",
+  },
+  robots: {
+    index: false, // Demo — don't index
+    follow: false,
+  },
 };
 
 export default function RootLayout({
@@ -34,6 +54,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <meta name="theme-color" content="#ffffff" />
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+      </head>
       <body
         className={`${inter.variable} ${jetbrains.variable} ${plusJakarta.variable} font-sans min-h-screen`}
       >

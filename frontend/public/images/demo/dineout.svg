@@ -1,5 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
-  <rect fill="#6366f1" width="100%" height="100%"/>
-  <text x="50%" y="48%" fill="#fff" font-family="system-ui,sans-serif" font-size="32" font-weight="800" text-anchor="middle">Dineout</text>
-  <text x="50%" y="58%" fill="#e0e7ff" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">Swiggy Nexus demo</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" width="640" height="480">
+  <rect width="640" height="480" fill="#FFF1F2"/>
+  <rect x="0" y="0" width="640" height="8" fill="#E11D48"/>
+  <!-- Restaurant table (top view) -->
+  <ellipse cx="320" cy="290" rx="160" ry="110" fill="#FED7AA" stroke="#C2410C" stroke-width="3"/>
+  <!-- Plate left -->
+  <circle cx="240" cy="290" r="52" fill="white" stroke="#9CA3AF" stroke-width="2"/>
+  <circle cx="240" cy="290" r="40" fill="#FEF9C3"/>
+  <text x="240" y="300" font-family="system-ui" font-size="32" text-anchor="middle">🍽️</text>
+  <!-- Plate right -->
+  <circle cx="400" cy="290" r="52" fill="white" stroke="#9CA3AF" stroke-width="2"/>
+  <circle cx="400" cy="290" r="40" fill="#FEF9C3"/>
+  <text x="400" y="300" font-family="system-ui" font-size="32" text-anchor="middle">🥗</text>
+  <!-- Wine glasses -->
+  <path d="M305 210 L300 260 M295 260 L315 260 M305 210 Q295 230 295 245 Q295 258 305 260 Q315 258 315 245 Q315 230 305 210" fill="#DBEAFE" stroke="#3B82F6" stroke-width="2"/>
+  <path d="M335 210 L330 260 M325 260 L345 260 M335 210 Q325 230 325 245 Q325 258 335 260 Q345 258 345 245 Q345 230 335 210" fill="#FEE2E2" stroke="#EF4444" stroke-width="2"/>
+  <!-- Candle / ambiance -->
+  <rect x="315" y="325" width="10" height="22" fill="#FBBF24"/>
+  <ellipse cx="320" cy="320" rx="7" ry="9" fill="#FDE68A"/>
+  <path d="M320 310 Q318 302 320 296 Q322 302 320 310" fill="#F97316"/>
+  <!-- Stars (rating) -->
+  <text x="320" y="130" font-family="system-ui" font-size="28" text-anchor="middle">★ ★ ★ ★ ★</text>
+  <!-- Badge -->
+  <rect x="0" y="420" width="640" height="60" fill="#FFF1F2"/>
+  <text x="320" y="456" font-family="system-ui, sans-serif" font-size="22" font-weight="700" fill="#9F1239" text-anchor="middle">DINEOUT · TABLE RESERVATIONS</text>
 </svg>

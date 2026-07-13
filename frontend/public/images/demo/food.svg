@@ -1,5 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
-  <rect fill="#f97316" width="100%" height="100%"/>
-  <text x="50%" y="48%" fill="#fff" font-family="system-ui,sans-serif" font-size="32" font-weight="800" text-anchor="middle">Food</text>
-  <text x="50%" y="58%" fill="#ffedd5" font-family="system-ui,sans-serif" font-size="14" text-anchor="middle">Swiggy Nexus demo</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" width="640" height="480">
+  <rect width="640" height="480" fill="#FFF7ED"/>
+  <rect x="0" y="0" width="640" height="8" fill="#FC8019"/>
+  <!-- Food illustration: bowl with steam -->
+  <circle cx="320" cy="260" r="110" fill="#FED7AA" stroke="#FB923C" stroke-width="3"/>
+  <ellipse cx="320" cy="270" rx="90" ry="70" fill="#FCA168"/>
+  <!-- Noodles / rice texture -->
+  <ellipse cx="300" cy="260" rx="60" ry="40" fill="#FDBA74" opacity="0.7"/>
+  <ellipse cx="340" cy="275" rx="50" ry="35" fill="#F97316" opacity="0.5"/>
+  <!-- Fork -->
+  <line x1="440" y1="160" x2="430" y2="310" stroke="#1C1917" stroke-width="4" stroke-linecap="round"/>
+  <line x1="420" y1="160" x2="425" y2="220" stroke="#1C1917" stroke-width="3" stroke-linecap="round"/>
+  <line x1="430" y1="160" x2="435" y2="220" stroke="#1C1917" stroke-width="3" stroke-linecap="round"/>
+  <line x1="440" y1="160" x2="445" y2="220" stroke="#1C1917" stroke-width="3" stroke-linecap="round"/>
+  <!-- Steam -->
+  <path d="M285 140 Q280 120 295 100 Q310 80 305 60" fill="none" stroke="#9CA3AF" stroke-width="3" stroke-linecap="round"/>
+  <path d="M315 140 Q310 120 325 100 Q340 80 335 60" fill="none" stroke="#9CA3AF" stroke-width="3" stroke-linecap="round"/>
+  <path d="M345 140 Q340 120 355 100 Q370 80 365 60" fill="none" stroke="#9CA3AF" stroke-width="3" stroke-linecap="round"/>
+  <!-- Badge area -->
+  <rect x="0" y="420" width="640" height="60" fill="#FFF7ED"/>
+  <text x="320" y="456" font-family="system-ui, sans-serif" font-size="22" font-weight="700" fill="#9A3412" text-anchor="middle">FOOD DELIVERY</text>
 </svg>
