@@ -189,7 +189,7 @@ export function ConciergeOps({ className }: { className?: string }) {
     }
   };
 
-  const decide = async (requestId: string, approved: bool) => {
+  const decide = async (requestId: string, approved: boolean) => {
     setLastRequestId(requestId);
     setPhase("executing");
     nexusToast(approved ? "Executing writes…" : "Rejecting…");
