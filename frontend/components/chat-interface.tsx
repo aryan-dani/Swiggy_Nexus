@@ -3,45 +3,98 @@
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowUp,
+  Check,
+  ChevronDown,
   Loader2,
   PlusCircle,
   Terminal,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { ChatHero } from "@/components/chat-hero";
+import {
+  captionForMethod,
+  DemoDirector,
+  DemoSummaryCard,
+  stepFromToolMethod,
+  type DemoStepId,
+} from "@/components/demo-director";
 import { NexusLogoMark } from "@/components/nexus-logo-mark";
+import { NexusSignalsBar } from "@/components/nexus-signals-bar";
 import { renderSimpleMarkdown, ToolTraceTheater } from "@/components/tool-trace-theater";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { FeedItem } from "@/lib/api";
 import { postChatStream } from "@/lib/api";
 import { getToolCoverage, recordToolFromStream } from "@/lib/mcp-client";
-import { getOrchestratorInfo } from "@/lib/orchestrator-info";
+import type { NexusDemoSettings, NexusReviewerScenario } from "@/lib/nexus-settings-storage";
 import { neoSpring, slideFromLeft, slideFromRight } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 type Role = "user" | "assistant";
 type Msg = { id: string; role: Role; text: string };
 
+type ToolChip = {
+  id: string;
+  method: string;
+  vertical: "food" | "im" | "dineout" | "other";
+};
+
+function verticalFromMethod(method: string): ToolChip["vertical"] {
+  const m = method.toLowerCase();
+  if (m.includes("dineout") || m.includes("book_table") || m.includes("available_slots"))
+    return "dineout";
+  if (
+    m.includes("search_products") ||
+    m.includes("update_cart") ||
+    m.includes("checkout") ||
+    m.includes("instamart") ||
+    m.startsWith("im_")
+  )
+    return "im";
+  if (m.includes("food") || m.includes("menu") || m.includes("place_food") || m.includes("restaurant"))
+    return "food";
+  return "other";
+}
+
+const VERT_CHIP: Record<ToolChip["vertical"], string> = {
+  dineout: "border-indigo-300 bg-indigo-50 text-indigo-900",
+  im: "border-emerald-300 bg-emerald-50 text-emerald-900",
+  food: "border-orange-300 bg-orange-50 text-orange-900",
+  other: "border-slate-300 bg-slate-50 text-slate-700",
+};
+
 export type ChatInterfaceProps = {
   onFeedItems: (items: FeedItem[]) => void;
   devMode: boolean;
+  onDevModeChange?: (v: boolean) => void;
   sessionHints?: boolean;
-  /** Passed to same-origin mock orchestration (`/api/chat/stream`). */
   chatContext?: Record<string, unknown>;
-  /** Prefills the composer when a reviewer preset is selected. */
   suggestedPrompt?: string;
   onRegisterSend?: (fn: (text: string) => void) => void;
   onChatComplete?: (assistantText: string) => void;
+  demoSettings: NexusDemoSettings;
+  onDemoSettingsChange: (next: NexusDemoSettings) => void;
+  onResetSession?: () => void;
+  onRunWow?: (scenario: NexusReviewerScenario, prompt: string) => void;
+  onOpenConcierge?: () => void;
+  onPickScenario?: (scenario: NexusReviewerScenario, prompt: string) => void;
 };
 
 export default function ChatInterface({
   onFeedItems,
   devMode,
+  onDevModeChange,
   sessionHints = true,
   chatContext,
   suggestedPrompt,
   onRegisterSend,
   onChatComplete,
+  demoSettings,
+  onDemoSettingsChange,
+  onResetSession,
+  onRunWow,
+  onOpenConcierge,
+  onPickScenario,
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
   const isChrono =
@@ -51,16 +104,22 @@ export default function ChatInterface({
   useEffect(() => {
     if (suggestedPrompt) setInput(suggestedPrompt);
   }, [suggestedPrompt]);
+
   const [busy, setBusy] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [thinking, setThinking] = useState<string[]>([]);
-  const [showThinking, setShowThinking] = useState(true);
+  const [showThinking, setShowThinking] = useState(false);
   const [rpcLogs, setRpcLogs] = useState<string[]>([]);
+  const [toolChips, setToolChips] = useState<ToolChip[]>([]);
   const [liveTool, setLiveTool] = useState<string | null>(null);
   const [streamPreview, setStreamPreview] = useState("");
   const [toolCount, setToolCount] = useState(0);
+  const [demoStep, setDemoStep] = useState<DemoStepId | null>(null);
+  const [demoCaption, setDemoCaption] = useState("");
+  const [showDirector, setShowDirector] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
+  const [verticalsHit, setVerticalsHit] = useState<Set<string>>(new Set());
   const bottomRef = useRef<HTMLDivElement>(null);
-  const orch = getOrchestratorInfo();
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -68,7 +127,7 @@ export default function ChatInterface({
 
   useEffect(() => {
     scrollToBottom();
-  }, [msgs, thinking, busy, streamPreview, scrollToBottom]);
+  }, [msgs, thinking, busy, streamPreview, toolChips, showSummary, scrollToBottom]);
 
   useEffect(() => {
     setToolCount(getToolCoverage().used);
@@ -82,70 +141,118 @@ export default function ChatInterface({
     setRpcLogs((prev) => [...prev.slice(-80), line]);
   }, []);
 
-  const runSend = useCallback(async (overrideText?: string) => {
-    const text = (overrideText ?? input).trim();
-    if (!text || busy) return;
+  const runSend = useCallback(
+    async (overrideText?: string) => {
+      const text = (overrideText ?? input).trim();
+      if (!text || busy) return;
 
-    if (!overrideText) setInput("");
-    setBusy(true);
-    setThinking([]);
-    setLiveTool(null);
-    setStreamPreview("");
-    onFeedItems([]);
-    setRpcLogs([]);
+      if (!overrideText) setInput("");
+      setBusy(true);
+      setThinking([]);
+      setLiveTool(null);
+      setStreamPreview("");
+      onFeedItems([]);
+      setRpcLogs([]);
+      setToolChips([]);
+      setShowSummary(false);
+      setVerticalsHit(new Set());
 
-    const uid = () => crypto.randomUUID();
-    setMsgs((m) => [...m, { id: uid(), role: "user", text }]);
+      const chronoMode =
+        chatContext?.scenario === "chrono_host" ||
+        text.toLowerCase().includes("evening") ||
+        text.toLowerCase().includes("12 guests");
+      setShowDirector(Boolean(chronoMode));
+      setDemoStep(chronoMode ? "plan" : null);
+      setDemoCaption(chronoMode ? "Reading intent and picking verticals…" : "");
 
-    let assistantText = "";
+      const uid = () => crypto.randomUUID();
+      setMsgs((m) => [...m, { id: uid(), role: "user", text }]);
 
-    await postChatStream(text, chatContext, (ev) => {
-      if (ev.type === "thinking") {
-        setThinking((t) => [...t, ev.payload.text]);
-        setStreamPreview(ev.payload.text);
-      }
-      if (ev.type === "tool") {
-        appendLog(ev.payload);
-        recordToolFromStream(ev.payload);
-        setToolCount(getToolCoverage().used);
-        const method = String(ev.payload.method ?? "mcp_tool");
-        setLiveTool(method);
-        setStreamPreview(`Executor · ${method}`);
-      }
-      if (ev.type === "feed") {
-        onFeedItems(ev.payload.items);
-      }
-      if (ev.type === "assistant") {
-        assistantText = ev.payload.text;
-      }
-      if (ev.type === "error") {
-        assistantText = `Error: ${ev.payload.message}`;
-      }
-      if (ev.type === "done") {
-        if (ev.payload.feed_items?.length) {
-          onFeedItems(ev.payload.feed_items);
+      let assistantText = "";
+      let sawBundle = false;
+      const verts = new Set<string>();
+
+      await postChatStream(text, chatContext, (ev) => {
+        if (ev.type === "thinking") {
+          setThinking((t) => [...t, ev.payload.text]);
+          setStreamPreview(ev.payload.text);
+          if (chronoMode && !sawBundle) {
+            setDemoStep("plan");
+            setDemoCaption(ev.payload.text.slice(0, 80));
+          }
         }
-        const final = ev.payload.assistant_reply ?? assistantText;
-        if (final) assistantText = final;
+        if (ev.type === "tool") {
+          appendLog(ev.payload);
+          recordToolFromStream(ev.payload);
+          setToolCount(getToolCoverage().used);
+          const method = String(ev.payload.method ?? "mcp_tool");
+          setLiveTool(method);
+          setStreamPreview(captionForMethod(method));
+          const v = verticalFromMethod(method);
+          verts.add(v);
+          setVerticalsHit(new Set(verts));
+          setToolChips((prev) => [
+            ...prev,
+            { id: `${method}-${prev.length}`, method, vertical: v },
+          ]);
+          if (chronoMode) {
+            const step = stepFromToolMethod(method);
+            if (step) {
+              setDemoStep(step);
+              setDemoCaption(captionForMethod(method));
+            }
+          }
+        }
+        if (ev.type === "feed") {
+          onFeedItems(ev.payload.items);
+          if (ev.payload.items?.some((i: FeedItem) => i.type === "event_bundle")) {
+            sawBundle = true;
+            setDemoStep("bundle");
+            setDemoCaption("Bundle ready — review on the right →");
+          }
+        }
+        if (ev.type === "assistant") {
+          assistantText = ev.payload.text;
+        }
+        if (ev.type === "error") {
+          assistantText = `Error: ${ev.payload.message}`;
+        }
+        if (ev.type === "done") {
+          if (ev.payload.feed_items?.length) {
+            onFeedItems(ev.payload.feed_items);
+            if (ev.payload.feed_items.some((i: FeedItem) => i.type === "event_bundle")) {
+              sawBundle = true;
+              setDemoStep("bundle");
+              setDemoCaption("Bundle ready — review on the right →");
+            }
+          }
+          const final = ev.payload.assistant_reply ?? assistantText;
+          if (final) assistantText = final;
+        }
+      });
+
+      setMsgs((m) => [
+        ...m,
+        {
+          id: uid(),
+          role: "assistant",
+          text:
+            assistantText ||
+            "Run complete — check the Activity rail for mock MCP results.",
+        },
+      ]);
+
+      onChatComplete?.(assistantText);
+      setLiveTool(null);
+      setStreamPreview("");
+      setBusy(false);
+      if (chronoMode) {
+        setDemoStep("bundle");
+        setShowSummary(true);
       }
-    });
-
-    setMsgs((m) => [
-      ...m,
-      {
-        id: uid(),
-        role: "assistant",
-        text:
-          assistantText ||
-          "Run complete — check the live feed for mock MCP results.",
-      },
-    ]);
-
-    onChatComplete?.(assistantText);
-    setLiveTool(null);
-    setStreamPreview("");
-    setBusy(false);
-  }, [appendLog, busy, chatContext, input, onChatComplete, onFeedItems]);
+    },
+    [appendLog, busy, chatContext, input, onChatComplete, onFeedItems]
+  );
 
   const runSendRef = useRef(runSend);
   runSendRef.current = runSend;
@@ -156,54 +263,57 @@ export default function ChatInterface({
     });
   }, [onRegisterSend]);
 
+  const empty = msgs.length === 0 && !busy;
+
+  const uniqueVerts = useMemo(() => {
+    const s = new Set(
+      [...verticalsHit].filter((v) => v !== "other")
+    );
+    return Math.max(s.size, showSummary ? 1 : 0);
+  }, [verticalsHit, showSummary]);
+
   return (
-    <div className="flex h-full min-h-0 max-h-[min(72vh,820px)] flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2 border-2 border-black bg-slate-900 px-3 py-2 text-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
-        <span className="font-display text-[10px] font-black uppercase tracking-widest text-emerald-300">
-          {orch.label}
-        </span>
-        <span className="font-mono text-[10px] text-slate-400">
-          {orch.llmModel ?? "No LLM · deterministic MCP graph"}
-        </span>
+    <div className="flex h-full min-h-0 max-h-[min(78vh,880px)] flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="nexus-section-title text-sm">Chat</h2>
         {(busy || toolCount > 0) && (
-          <span className="ml-auto font-mono text-[10px] font-bold text-amber-300">
-            MCP {toolCount}/33
+          <span className="font-mono text-[10px] font-bold text-slate-500">
+            Session tools · {toolCount}
           </span>
         )}
       </div>
+
+      <DemoDirector
+        visible={showDirector && (busy || showSummary)}
+        activeStep={demoStep}
+        caption={demoCaption}
+      />
 
       <div
         id="nexus-chat-scroll"
         className="neo-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto pr-1"
       >
-        {msgs.length === 0 && (
-          <motion.p
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={neoSpring}
-            className="bento-card border-dashed bg-slate-50 p-4 font-display text-sm text-slate-600"
-          >
-            {sessionHints ? (
-              isChrono ? (
-                <>
-                  <strong className="text-violet-800">Chrono-Host armed.</strong>{" "}
-                  Send the prefilled prompt (or any message) to stage Dineout +
-                  Instamart + Food dessert in one bundle — check the feed panel
-                  on the right.
-                </>
-              ) : (
-                <>
-                  Ask anything — e.g. snacks for coding, team dinner, or biryani
-                  delivery. Synthetic Swiggy-style tools only.
-                </>
-              )
-            ) : (
-              <>Send a message to start. Mock MCP only — not real orders.</>
-            )}
-          </motion.p>
-        )}
+        {empty && onRunWow && onOpenConcierge && onPickScenario ? (
+          <ChatHero
+            onRunWow={(scenario, prompt) => {
+              onRunWow(scenario, prompt);
+              setInput(prompt);
+              window.setTimeout(() => {
+                void runSendRef.current(prompt);
+              }, 50);
+            }}
+            onOpenConcierge={onOpenConcierge}
+            onPickScenario={onPickScenario}
+          />
+        ) : empty && sessionHints ? (
+          <p className="bento-card-soft p-4 text-sm text-slate-600">
+            {isChrono
+              ? "Chrono-Host armed — send the prefilled prompt to stage the 3-vertical bundle."
+              : "Ask anything — snacks, team dinner, or biryani. Synthetic Swiggy tools only."}
+          </p>
+        ) : null}
 
-        {msgs.map((m) => (
+        {msgs.map((m) =>
           m.role === "user" ? (
             <motion.div
               key={m.id}
@@ -212,20 +322,11 @@ export default function ChatInterface({
               animate="show"
               className="flex items-end justify-end gap-3"
             >
-              <div className="bento-card max-w-xl bg-indigo-50 px-5 py-4 shadow-[4px_4px_0px_0px_rgba(99,91,255,1)]">
+              <div className="bento-card max-w-xl bg-indigo-50 px-4 py-3 shadow-[3px_3px_0px_0px_rgba(99,91,255,1)]">
                 <p className="font-display text-[10px] font-black uppercase tracking-widest text-primary-container">
                   You
                 </p>
-                <p className="mt-2 text-left font-sans text-sm font-medium text-black">
-                  {m.text}
-                </p>
-              </div>
-              <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full border-2 border-black bg-slate-200 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                <img
-                  alt=""
-                  className="h-full w-full object-cover"
-                  src="https://randomuser.me/api/portraits/women/68.jpg"
-                />
+                <p className="mt-1.5 text-left font-sans text-sm font-medium text-black">{m.text}</p>
               </div>
             </motion.div>
           ) : (
@@ -236,34 +337,49 @@ export default function ChatInterface({
               animate="show"
               className="flex items-start gap-3"
             >
-              <motion.div
-                className="flex h-12 w-12 shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                whileHover={{
-                  boxShadow: "4px 4px 0px 0px rgba(0,0,0,1)",
-                  transition: neoSpring,
-                }}
-                whileTap={{ boxShadow: "2px 2px 0px 0px rgba(0,0,0,1)" }}
-              >
+              <div className="flex h-10 w-10 shrink-0 overflow-hidden rounded border border-black/20">
                 <NexusLogoMark className="h-full w-full" aria-label="Nexus" />
-              </motion.div>
-              <div className="min-w-0 flex-1">
-                <div className="bento-card px-5 py-4">
-                  <p className="font-sans text-sm font-medium leading-relaxed text-black">
-                    {renderSimpleMarkdown(m.text)}
-                  </p>
-                  <div className="mt-4 flex flex-wrap items-center gap-2 border-t-2 border-black/5 pt-3">
-                    <span className="border-2 border-black bg-slate-100 px-2 py-0.5 font-display text-[10px] font-black uppercase tracking-wider">
-                      Demo locale
-                    </span>
-                    <span className="font-mono text-[10px] text-slate-400">
-                      NEXUS · MOCK MCP
-                    </span>
-                  </div>
-                </div>
+              </div>
+              <div className="bento-card-soft min-w-0 flex-1 px-4 py-3">
+                <p className="font-sans text-sm font-medium leading-relaxed text-black">
+                  {renderSimpleMarkdown(m.text)}
+                </p>
               </div>
             </motion.div>
           )
-        ))}
+        )}
+
+        {showSummary && !busy && (
+          <DemoSummaryCard
+            toolCount={toolCount}
+            verticals={uniqueVerts || 3}
+            onOpenBundle={() => {
+              document.getElementById("nexus-activity-rail")?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+              });
+            }}
+            onViewTraces={() => onDevModeChange?.(true)}
+          />
+        )}
+
+        {toolChips.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {toolChips.map((chip) => (
+              <span
+                key={chip.id}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold",
+                  VERT_CHIP[chip.vertical]
+                )}
+                title={chip.method}
+              >
+                <Check className="h-2.5 w-2.5" aria-hidden />
+                {chip.method.replace(/^(food_|im_|dineout_)/, "").slice(0, 28)}
+              </span>
+            ))}
+          </div>
+        )}
 
         <AnimatePresence>
           {busy && (
@@ -275,17 +391,13 @@ export default function ChatInterface({
               transition={neoSpring}
               className="flex items-start gap-3"
             >
-              <motion.div
-                className="flex h-12 w-12 shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                animate={{ opacity: [0.75, 1, 0.75] }}
-                transition={{ repeat: Infinity, duration: 1.6, ease: "easeInOut" }}
-              >
-                <NexusLogoMark className="h-full w-full" aria-label="Nexus is typing" />
-              </motion.div>
-              <div className="bento-card flex min-w-0 flex-1 flex-col gap-2 py-3 pl-4 pr-4">
+              <div className="flex h-10 w-10 shrink-0 overflow-hidden rounded border border-black/20">
+                <NexusLogoMark className="h-full w-full" aria-label="Nexus is working" />
+              </div>
+              <div className="bento-card-soft flex min-w-0 flex-1 flex-col gap-1 px-4 py-3">
                 {liveTool ? (
                   <p className="font-mono text-[11px] font-bold text-amber-800">
-                    ⚡ {liveTool}
+                    {captionForMethod(liveTool)}
                   </p>
                 ) : streamPreview ? (
                   <p className="font-mono text-[11px] text-violet-700">{streamPreview}</p>
@@ -304,40 +416,31 @@ export default function ChatInterface({
         <div ref={bottomRef} className="h-px shrink-0" aria-hidden />
       </div>
 
-      <div className="shrink-0 border-t-2 border-dashed border-black/10 pt-2">
-        <motion.button
-          type="button"
-          onClick={() => setShowThinking((s) => !s)}
-          whileTap={{ scale: 0.99 }}
-          className="flex w-full items-center justify-between font-display text-xs font-bold uppercase tracking-widest text-slate-500 transition-colors hover:text-slate-800"
-        >
-          Agent reasoning
-          <span className="tabular-nums">{showThinking ? "Hide" : "Show"}</span>
-        </motion.button>
-        <AnimatePresence initial={false}>
-          {showThinking && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="overflow-hidden"
-            >
-              <div className="mt-2 max-h-28 overflow-y-auto border-2 border-black bg-slate-50 p-3 font-mono text-[11px] text-slate-700">
-                <ul className="space-y-1">
-                  {thinking.length === 0 && !busy && (
-                    <li>No trace yet for this session.</li>
-                  )}
+      {(thinking.length > 0 || busy) && (
+        <div className="shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowThinking((s) => !s)}
+            className="flex w-full items-center gap-2 font-sans text-[11px] font-medium text-slate-500 hover:text-slate-800"
+          >
+            <ChevronDown
+              className={cn("h-3.5 w-3.5 transition-transform", showThinking && "rotate-180")}
+            />
+            Planner reasoning · {thinking.length || (busy ? "…" : 0)} steps
+          </button>
+          <AnimatePresence initial={false}>
+            {showThinking && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                <ul className="mt-1 max-h-24 space-y-1 overflow-y-auto rounded border border-black/10 bg-slate-50 p-2 font-mono text-[10px] text-slate-600">
                   {thinking.map((line, i) => (
-                    <motion.li
-                      key={`${i}-${line.slice(0, 20)}`}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ ...neoSpring, delay: i * 0.025 }}
-                      className="border-l-2 border-primary-container/40 pl-2"
-                    >
+                    <li key={`${i}-${line.slice(0, 16)}`} className="border-l-2 border-violet-300 pl-2">
                       {line}
-                    </motion.li>
+                    </li>
                   ))}
                   {busy && thinking.length === 0 && (
                     <li className="flex items-center gap-2">
@@ -346,62 +449,56 @@ export default function ChatInterface({
                     </li>
                   )}
                 </ul>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
 
       <AnimatePresence>
         {devMode && (
           <motion.div
             key="dev-panel"
-            initial={{ opacity: 0, height: 0, y: -8 }}
-            animate={{ opacity: 1, height: "auto", y: 0 }}
-            exit={{ opacity: 0, height: 0, y: -8 }}
-            transition={neoSpring}
-            className="overflow-hidden border-2 border-black bg-amber-100 p-3 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden rounded border border-amber-400 bg-amber-50 p-3"
           >
-            <div className="mb-2 flex items-center gap-2 font-display text-xs font-black uppercase text-black">
-              <Terminal className="h-4 w-4" />
-              JSON-RPC log
+            <div className="mb-2 flex items-center gap-2 font-display text-[10px] font-black uppercase text-amber-900">
+              <Terminal className="h-3.5 w-3.5" />
+              Dev · JSON-RPC + traces
             </div>
             <ToolTraceTheater logs={rpcLogs} className="mb-2" />
-            <ScrollArea className="h-24 rounded border-2 border-black bg-white">
+            <ScrollArea className="h-20 rounded border border-black/10 bg-white">
               <pre className="p-2 font-mono text-[10px] text-slate-700">
-                {rpcLogs.length === 0
-                  ? "// Tool calls after send…"
-                  : rpcLogs.join("\n---\n")}
+                {rpcLogs.length === 0 ? "// Tool calls after send…" : rpcLogs.join("\n---\n")}
               </pre>
             </ScrollArea>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <div className="mt-auto">
-        <motion.form
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ ...neoSpring, delay: 0.1 }}
+      <NexusSignalsBar
+        settings={demoSettings}
+        onSettingsChange={onDemoSettingsChange}
+        onReset={onResetSession}
+        onSuggestPrompt={(t) => setInput(t)}
+      />
+
+      <div className="mt-auto shrink-0">
+        <form
           onSubmit={(e) => {
             e.preventDefault();
             void runSend();
           }}
-          whileTap={{ scale: 0.998 }}
-          className="flex items-center gap-2 border-2 border-black bg-white p-2 pl-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-shadow focus-within:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]"
+          className="flex items-center gap-2 rounded-lg border-2 border-black bg-white p-2 pl-3 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
         >
-          <motion.button
-            type="button"
-            className="text-slate-400 hover:text-black"
-            aria-label="Attach file"
-            whileHover={{ scale: 1.06, transition: neoSpring }}
-            whileTap={{ scale: 0.96 }}
-          >
-            <PlusCircle size={24} aria-hidden />
-          </motion.button>
+          <button type="button" className="text-slate-400 hover:text-black" aria-label="Attach">
+            <PlusCircle size={22} aria-hidden />
+          </button>
           <input
             autoFocus
-            className="min-w-0 flex-1 border-none bg-transparent py-3 font-display text-sm font-bold text-black outline-none placeholder:text-slate-400"
+            className="min-w-0 flex-1 border-none bg-transparent py-2.5 font-sans text-sm font-medium text-black outline-none placeholder:text-slate-400"
             placeholder="Ask Nexus…"
             value={input}
             disabled={busy}
@@ -413,47 +510,28 @@ export default function ChatInterface({
               }
             }}
           />
-          <motion.button
+          <button
             type="submit"
             disabled={busy || !input.trim()}
-            whileHover={
-              busy || !input.trim()
-                ? undefined
-                : {
-                    scale: 1.03,
-                    boxShadow: "5px 5px 0px 0px rgba(0,0,0,1)",
-                    transition: neoSpring,
-                  }
-            }
-            whileTap={
-              busy || !input.trim()
-                ? undefined
-                : { scale: 0.97, boxShadow: "2px 2px 0px 0px rgba(0,0,0,1)" }
-            }
             className={cn(
-              "flex h-12 items-center justify-center gap-2 border-2 border-black bg-primary-container px-5 font-display text-xs font-black uppercase tracking-widest text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-colors",
+              "flex h-10 items-center justify-center gap-2 border-2 border-black bg-primary-container px-4 font-display text-[10px] font-black uppercase tracking-widest text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]",
               "hover:bg-[#5248e6] disabled:cursor-not-allowed disabled:opacity-50"
             )}
           >
             {busy ? (
               <>
-                Sending... <Loader2 className="animate-spin" size={16} />
+                <Loader2 className="animate-spin" size={14} />
               </>
             ) : (
               <>
-                Send <ArrowUp size={16} />
+                Send <ArrowUp size={14} />
               </>
             )}
-          </motion.button>
-        </motion.form>
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.25 }}
-          className="mt-3 text-center font-mono text-[10px] uppercase tracking-widest text-slate-400"
-        >
-          Nexus can make mistakes. Demo data only — verify before ordering.
-        </motion.p>
+          </button>
+        </form>
+        <p className="mt-2 text-center font-mono text-[10px] uppercase tracking-widest text-slate-400">
+          Demo data only — not real Swiggy orders
+        </p>
       </div>
     </div>
   );

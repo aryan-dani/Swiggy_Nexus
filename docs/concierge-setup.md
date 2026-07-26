@@ -118,12 +118,16 @@ NEXT_PUBLIC_GROQ_ENABLED=true
 
 ## Demo script for reviewers (Concierge Ops)
 
+**Full spoken script + plain-language explanation:** [`docs/demo-script.md`](demo-script.md).
+
 1. **Trigger Zero-Touch Host** → pending approval → Approve → Instamart checkout + food place.
 2. **Trigger Dineout** → staged table → Approve → `book_table` only after HITL.
 3. **Rain / Rooftop** → Hinglish pivot (Order home / Indoor / Keep).
 4. **Guests slider** → Bin Bulaye Mehmaan Instamart SOS.
 5. **IPL chase** → finger-food HITL.
 6. Watch **QoL timeline** + MCP coverage in chat tab.
+
+On localhost, Telegram Approve uses **long-polling** (see API log: `starting Telegram long-poll`). Ops UI Approve is the same HITL gate.
 
 ## Key endpoints
 

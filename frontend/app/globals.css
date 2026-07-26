@@ -104,6 +104,23 @@
     @apply border-white/20 bg-slate-900 shadow-[4px_4px_0px_0px_rgba(255,255,255,0.15)];
   }
 
+  /* Secondary surfaces — lighter hierarchy than primary cards/CTAs */
+  .bento-card-soft {
+    @apply rounded-lg border border-black/15 bg-white transition-all;
+  }
+
+  .dark .bento-card-soft {
+    @apply border-white/15 bg-slate-900;
+  }
+
+  .nexus-caption {
+    @apply text-[11px] font-medium leading-snug text-slate-600;
+  }
+
+  .nexus-section-title {
+    @apply font-display text-base font-black uppercase tracking-tight text-black;
+  }
+
   .bento-card-interactive {
     @apply bento-card;
   }

@@ -4,9 +4,16 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 import uuid
+from pathlib import Path
 from typing import Any
+
+# Allow `uvicorn main:app` from backend/ as well as `uvicorn backend.main:app` from repo root.
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
@@ -67,13 +74,19 @@ def _parse_origin_regex() -> str | None:
 async def lifespan(_app: FastAPI):
     try:
         from app.services.scheduler import start_scheduler
-        from app.api.hitl import register_telegram_webhook
+        from app.api.hitl import register_telegram_webhook, stop_telegram_poller
 
         start_scheduler()
         await register_telegram_webhook()
     except Exception as e:  # noqa: BLE001
         log.warning("Concierge startup hooks failed: %s", e)
     yield
+    try:
+        from app.api.hitl import stop_telegram_poller
+
+        await stop_telegram_poller()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 app = FastAPI(title="Swiggy Nexus API", version="0.3.0", lifespan=lifespan)

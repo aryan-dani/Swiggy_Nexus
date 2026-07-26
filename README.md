@@ -24,7 +24,7 @@ flowchart TD
     HITL -->|Reject| Cleanup[flush carts + declined note]
 ```
 
-Ops UI: Next.js **Concierge** tab (`/api/concierge/*` + HITL approve/reject). Setup: [`docs/concierge-setup.md`](docs/concierge-setup.md).
+Ops UI: Next.js **Concierge** tab (`/api/concierge/*` + HITL approve/reject). Setup: [`docs/concierge-setup.md`](docs/concierge-setup.md). Spoken demo script: [`docs/demo-script.md`](docs/demo-script.md).
 
 ---
 
@@ -66,12 +66,20 @@ GROQ_API_KEY=gsk_your_groq_api_key_here
 
 ### 3. Install Dependencies & Start Server
 
+Run from the **repo root** (not `backend/`):
+
 ```bash
-# Install dependencies
+# Install dependencies (prefer the project venv)
 pip install -r requirements.txt
 
-# Run FastAPI server
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+# Full API + Concierge (recommended)
+uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+If your shell is already in `backend/`, use:
+
+```bash
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Verify backend health at: `http://localhost:8000/health/concierge`

@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.hitl import register_telegram_webhook
+from app.api.hitl import register_telegram_webhook, stop_telegram_poller
 from app.api.webhooks import router as concierge_router
 from app.config import settings
 from app.services.scheduler import start_scheduler
@@ -18,6 +18,7 @@ async def lifespan(_app: FastAPI):
     start_scheduler()
     await register_telegram_webhook()
     yield
+    await stop_telegram_poller()
 
 
 app = FastAPI(

@@ -3,7 +3,6 @@
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { AddressRail } from "@/components/address-rail";
 import { AnalyticsView } from "@/components/analytics-view";
 import { AppSidebar } from "@/components/app-sidebar";
 import ChatInterface from "@/components/chat-interface";
@@ -16,8 +15,6 @@ import { LibraryView, saveLibrarySession } from "@/components/library-view";
 import { MenuExplorer } from "@/components/menu-explorer";
 import McpFeed from "@/components/mcp-feed";
 import { NexusCommandCenter } from "@/components/nexus-command-center";
-import { NexusSignalsBar } from "@/components/nexus-signals-bar";
-import { NexusWowLauncher } from "@/components/nexus-wow-launcher";
 import { ConciergeOps } from "@/components/concierge-ops";
 import { VariantPicker } from "@/components/variant-picker";
 import type { FeedItem } from "@/lib/api";
@@ -65,6 +62,7 @@ function HomeInner() {
   const handleNewChat = useCallback(() => {
     setFeedItems([]);
     setSessionId((s) => s + 1);
+    setSuggestedPrompt("");
     setActiveTab("chat");
   }, []);
 
@@ -95,16 +93,20 @@ function HomeInner() {
     [refreshCarts]
   );
 
-  const handleWowDemo = useCallback(
-    (scenario: NexusReviewerScenario, prompt: string) => {
-      const next = saveDemoSettings({ reviewerScenario: scenario, devMode: true });
-      setDemo(next);
-      setSuggestedPrompt(prompt);
-      setActiveTab("chat");
-      window.setTimeout(() => sendRef.current?.(prompt), 200);
-    },
-    []
-  );
+  /** WOW demo — do NOT force developer mode; Demo Director narrates instead. */
+  const handleWowDemo = useCallback((scenario: NexusReviewerScenario, prompt: string) => {
+    const next = saveDemoSettings({ reviewerScenario: scenario });
+    setDemo(next);
+    setSuggestedPrompt(prompt);
+    setActiveTab("chat");
+  }, []);
+
+  const handlePickScenario = useCallback((scenario: NexusReviewerScenario, prompt: string) => {
+    const next = saveDemoSettings({ reviewerScenario: scenario });
+    setDemo(next);
+    setSuggestedPrompt(prompt);
+    setActiveTab("chat");
+  }, []);
 
   const handleCardAction = useCallback(
     async (card: NexusCardResult) => {
@@ -127,7 +129,12 @@ function HomeInner() {
       if (card.type === "dineout") {
         const rid = String(meta.restaurant_id ?? "do_italian_804");
         nexusToast(`Open slots for ${card.title} — use Deadlock arena or chat.`);
-        void callMcp("dineout", "check_availability", { restaurantId: rid, guestCount: demo.deadlockPartySize }, requestId);
+        void callMcp(
+          "dineout",
+          "check_availability",
+          { restaurantId: rid, guestCount: demo.deadlockPartySize },
+          requestId
+        );
       }
     },
     [demo.deadlockPartySize, requestId]
@@ -147,16 +154,16 @@ function HomeInner() {
         initial={{ opacity: 0, x: -10 }}
         animate={{ opacity: 1, x: 0 }}
         transition={neoSpring}
-        className="fixed bottom-0 left-0 top-0 z-40 box-border hidden w-72 min-w-72 max-w-72 flex-col overflow-x-hidden overflow-y-auto border-r-2 border-black bg-white px-6 pb-8 pt-8 pr-8 shadow-[6px_0_0_0_rgba(0,0,0,0.04)] md:flex"
+        className="fixed bottom-0 left-0 top-0 z-40 box-border hidden w-72 min-w-72 max-w-72 flex-col overflow-x-hidden overflow-y-auto border-r border-black/15 bg-white px-6 pb-8 pt-8 pr-8 md:flex"
       >
         <AppSidebar {...sidebarProps} className="h-full min-h-0" />
       </motion.aside>
 
-      <div className="bg-white selection:bg-primary-container selection:text-white min-h-screen overflow-x-clip pb-px font-sans text-on-surface md:pl-72">
+      <div className="min-h-screen overflow-x-clip bg-white pb-px font-sans text-on-surface selection:bg-primary-container selection:text-white md:pl-72">
         <div className="flex min-h-screen flex-col">
           <DashboardHeader sidebarProps={sidebarProps} />
 
-          <div className="border-b-2 border-black/10 px-4 py-2 md:px-8">
+          <div className="border-b border-black/10 px-4 py-2 md:px-8">
             <NexusCommandCenter
               onOpenFoodCart={() => setFoodCartOpen(true)}
               onOpenImCart={() => setImCartOpen(true)}
@@ -173,55 +180,53 @@ function HomeInner() {
               <>
                 <motion.section
                   variants={fadeUp}
-                  className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 lg:max-w-xl xl:max-w-2xl"
+                  className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 lg:max-w-xl xl:max-w-2xl"
                 >
-                  <AddressRail />
-                  <NexusWowLauncher onRunDemo={handleWowDemo} />
-                  <NexusSignalsBar
-                    settings={demo}
-                    onSettingsChange={handleDemoPatch}
-                    onReset={handleNewChat}
-                    onSuggestPrompt={setSuggestedPrompt}
-                  />
-                  {demo.reviewerScenario === "dialectic" && (
-                    <DialecticArena
-                      onTriggerCommerce={(action) => {
-                        sendRef.current?.(action);
-                      }}
-                    />
-                  )}
                   <ChatInterface
                     key={sessionId}
                     onFeedItems={setFeedItems}
                     devMode={demo.devMode}
+                    onDevModeChange={setDevModePersist}
                     sessionHints={demo.sessionHints}
                     chatContext={chatContext}
                     suggestedPrompt={suggestedPrompt}
                     onRegisterSend={handleRegisterSend}
                     onChatComplete={handleChatComplete}
+                    demoSettings={demo}
+                    onDemoSettingsChange={handleDemoPatch}
+                    onResetSession={handleNewChat}
+                    onRunWow={handleWowDemo}
+                    onOpenConcierge={() => setActiveTab("concierge")}
+                    onPickScenario={handlePickScenario}
                   />
                 </motion.section>
                 <motion.section
                   variants={fadeUp}
-                  className="flex min-h-0 min-w-0 flex-1 flex-col border-t-2 border-black pt-6 lg:min-h-[70vh] lg:border-l-2 lg:border-t-0 lg:pl-8 lg:pt-0"
+                  className="flex min-h-0 min-w-0 flex-1 flex-col border-t border-black/10 pt-6 lg:min-h-[70vh] lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0"
                 >
-                  {demo.reviewerScenario === "deadlock" && (
-                    <div className="mb-4">
-                      <DeadlockArena
-                        partySize={demo.deadlockPartySize}
-                        budgetInr={demo.deadlockBudgetInr}
-                      />
-                    </div>
-                  )}
                   <McpFeed
                     items={feedItems}
                     activeScenario={demo.reviewerScenario}
-                    compactFeed={demo.compactFeed}
+                    compactFeed={demo.compactFeed !== false}
                     onCardAction={handleCardAction}
                     onChronoConfirm={(text) => sendRef.current?.(text)}
                     onOpenImCart={() => setImCartOpen(true)}
                     onOpenFoodCart={() => setFoodCartOpen(true)}
                     watchParty={demo.signalWatchParty}
+                    arenaSlot={
+                      demo.reviewerScenario === "deadlock" ? (
+                        <DeadlockArena
+                          partySize={demo.deadlockPartySize}
+                          budgetInr={demo.deadlockBudgetInr}
+                        />
+                      ) : demo.reviewerScenario === "dialectic" ? (
+                        <DialecticArena
+                          onTriggerCommerce={(action) => {
+                            sendRef.current?.(action);
+                          }}
+                        />
+                      ) : undefined
+                    }
                   />
                 </motion.section>
               </>
@@ -240,22 +245,21 @@ function HomeInner() {
             ) : (
               <motion.div
                 variants={fadeUp}
-                className="flex w-full flex-col items-center justify-center rounded-xl border-4 border-black bg-slate-50 p-12 text-center shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]"
+                className="flex w-full flex-col items-center justify-center rounded-xl border border-black/15 bg-slate-50 p-12 text-center"
               >
-                <h2 className="mb-4 font-display text-4xl font-black uppercase tracking-tight text-black">
+                <h2 className="mb-4 font-display text-3xl font-black uppercase tracking-tight text-black">
                   Archive
                 </h2>
-                <p className="max-w-md font-sans text-lg font-medium text-slate-600">
+                <p className="max-w-md font-sans text-sm font-medium text-slate-600">
                   Demo archive entries live on the FastAPI backend when running locally.
                 </p>
-                <motion.button
-                  whileHover={{ scale: 1.05, boxShadow: "4px 4px 0px 0px rgba(0,0,0,1)" }}
-                  whileTap={{ scale: 0.95, boxShadow: "2px 2px 0px 0px rgba(0,0,0,1)" }}
+                <button
+                  type="button"
                   onClick={handleNewChat}
                   className="mt-8 border-2 border-black bg-neo-mint px-6 py-3 font-display text-sm font-black uppercase tracking-widest text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                 >
                   Return to Chat
-                </motion.button>
+                </button>
               </motion.div>
             )}
           </motion.main>
