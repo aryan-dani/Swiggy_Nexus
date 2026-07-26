@@ -13,6 +13,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from contextlib import asynccontextmanager
 
 # Load environment variables from backend/.env file (if present)
 _env_path = os.path.join(os.path.dirname(__file__), ".env")
@@ -27,6 +28,7 @@ from backend.logging_config import (
 from backend.llm_orchestrator import run_llm_agent as run_agent_stream
 from backend.tool_schemas import get_tool_names
 from mcp_server.http_routes import router as mock_mcp_router
+from app.api.webhooks import router as concierge_router
 from backend.sidebar_demo import (
     analytics_snapshot,
     archive_list,
@@ -61,9 +63,24 @@ def _parse_origin_regex() -> str | None:
     return None
 
 
-app = FastAPI(title="Swiggy Nexus API", version="0.2.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    try:
+        from app.services.scheduler import start_scheduler
+        from app.api.hitl import register_telegram_webhook
+
+        start_scheduler()
+        await register_telegram_webhook()
+    except Exception as e:  # noqa: BLE001
+        log.warning("Concierge startup hooks failed: %s", e)
+    yield
+
+
+app = FastAPI(title="Swiggy Nexus API", version="0.3.0", lifespan=lifespan)
 
 app.include_router(mock_mcp_router)
+app.include_router(concierge_router)
+
 
 app.add_middleware(
     CORSMiddleware,

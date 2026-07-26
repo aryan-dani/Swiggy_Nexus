@@ -70,9 +70,10 @@ EXTRA_PAGES = [
 ]
 
 
-def fetch(url: str, dest: Path, retries: int = 3) -> bool:
+def fetch(url: str, dest: Path, retries: int = 3, *, force: bool = False) -> bool:
     dest.parent.mkdir(parents=True, exist_ok=True)
-    if dest.exists() and dest.stat().st_size > 0:
+    if not force and dest.exists() and dest.stat().st_size > 0:
+        print(f"SKIP {dest.relative_to(ROOT)} (cached)")
         return True
     for attempt in range(retries):
         try:
@@ -90,38 +91,51 @@ def fetch(url: str, dest: Path, retries: int = 3) -> bool:
 
 
 def main() -> None:
-    manifest: dict = {"fetched": [], "failed": []}
+    import argparse
+    from datetime import datetime, timezone
+
+    parser = argparse.ArgumentParser(description="Fetch Swiggy Builders Club MCP docs")
+    parser.add_argument("--force", action="store_true", help="Re-download even if cached")
+    args = parser.parse_args()
+    force = args.force
+
+    manifest: dict = {
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "force": force,
+        "fetched": [],
+        "failed": [],
+    }
 
     bulk = [
         ("llms-full.txt", CACHE / "llms-full.txt"),
         ("llms.txt", CACHE / "llms.txt"),
     ]
     for path, dest in bulk:
-        ok = fetch(f"{BASE}/{path}", dest)
+        ok = fetch(f"{BASE}/{path}", dest, force=force)
         (manifest["fetched"] if ok else manifest["failed"]).append(path)
 
     for rel in EXTRA_PAGES:
         dest = CACHE / rel.replace("/", "__")
-        ok = fetch(f"{BASE}/{rel}", dest)
+        ok = fetch(f"{BASE}/{rel}", dest, force=force)
         entry = f"{BASE}/{rel}"
         (manifest["fetched"] if ok else manifest["failed"]).append(entry)
 
     for tool in FOOD_TOOLS:
         rel = f"docs/reference/food/{tool}.md"
         dest = CACHE / "reference" / "food" / f"{tool}.md"
-        ok = fetch(f"{BASE}/{rel}", dest)
+        ok = fetch(f"{BASE}/{rel}", dest, force=force)
         (manifest["fetched"] if ok else manifest["failed"]).append(tool)
 
     for tool in INSTAMART_TOOLS:
         rel = f"docs/reference/instamart/{tool}.md"
         dest = CACHE / "reference" / "instamart" / f"{tool}.md"
-        ok = fetch(f"{BASE}/{rel}", dest)
+        ok = fetch(f"{BASE}/{rel}", dest, force=force)
         (manifest["fetched"] if ok else manifest["failed"]).append(tool)
 
     for tool in DINEOUT_TOOLS:
         rel = f"docs/reference/dineout/{tool}.md"
         dest = CACHE / "reference" / "dineout" / f"{tool}.md"
-        ok = fetch(f"{BASE}/{rel}", dest)
+        ok = fetch(f"{BASE}/{rel}", dest, force=force)
         (manifest["fetched"] if ok else manifest["failed"]).append(tool)
 
     (CACHE / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")

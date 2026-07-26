@@ -1,115 +1,186 @@
-# Swiggy Nexus
+# Autonomous Social Concierge & Swiggy MCP Orchestrator
 
-Synthetic “Nexus” assistant UI demo: neo-brutalist ChatGPT-style workspace with a mock MCP feed. **Not affiliated with Swiggy.** Intended as a POC for agentic UX and optional FastAPI integration.
+An automated backend multi-agent system that bridges real-time **Google Calendar** events with real-world logistics using the **Swiggy Model Context Protocol (MCP)** platform.
 
-## Repository layout
+---
 
-| Path | Purpose |
-|------|---------|
-| `frontend/` | **Next.js 16** App Router UI. Includes **built-in `/api/*` Route Handlers** so the demo runs without a separate backend (local + Vercel). |
-| `backend/` | Optional **FastAPI** service (`uvicorn backend.main:app`). Use when you want real streaming/agent logic behind the UI. |
-| `docs/local-mock-mcp.md` | **Offline** MCP-style mock servers `POST /food`, `/im`, `/dineout` + streaming agent wired for demo video. |
-| `docs/swiggy-builders-club.md` | **Swiggy Builders Club** digest: official `mcp.swiggy.com` MCP (for production integration). |
+## 🌟 Overview & Workflow
 
-Real Swiggy MCP lives at `https://mcp.swiggy.com`; this repo ships a **fully local mock** (`mcp_server/` + [`docs/local-mock-mcp.md`](docs/local-mock-mcp.md)) for demos with no outbound API calls.
+When a user creates or modifies a Google Calendar event containing trigger keywords (`#swiggy` or `#host`), the system runs a **stage → approve → write** lifecycle. Write tools (`book_table`, `place_food_order`, `checkout`) never run before HITL consent.
 
-For partnering with Swiggy in production see [**Swiggy Builders Club — What you can use and how**](docs/swiggy-builders-club.md).
-
-## Prerequisites
-
-- **Node.js** 20.x or newer (LTS recommended) for `frontend/`
-- **Python 3.11+** only if you run `backend/` locally or via Docker
-
-## Quick start (frontend only, mocked API)
-
-From the repo root:
-
-```bash
-npm install --prefix frontend
-npm run dev
+```mermaid
+flowchart TD
+    Cal[Google Calendar webhook / manual trigger]
+    Vault[Taste Vault profiles]
+    Stage[Stage carts and slots — read tools only]
+    Somm[AI Sommelier Groq with rule fallback]
+    HITL[hitl_notify then INTERRUPT]
+    Exec[execute_transactions]
+    CalWB[Calendar write-back]
+    QoL[Weather guests fuel IPL QoL triggers]
+    Cal --> Vault --> Stage --> Somm --> HITL
+    QoL --> HITL
+    HITL -->|Approve| Exec --> CalWB
+    HITL -->|Reject| Cleanup[flush carts + declined note]
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Ops UI: Next.js **Concierge** tab (`/api/concierge/*` + HITL approve/reject). Setup: [`docs/concierge-setup.md`](docs/concierge-setup.md).
 
-With **no** `NEXT_PUBLIC_API_URL`, the UI calls **same-origin** routes under `frontend/app/api/` (SSE chat stub + sidebar JSON). No Python server required.
+---
 
-**Reviewer path:** Open the home page and use **Reviewer · Signals & scenarios** (synthetic triggers + story presets — Social Deadlock, Flow-state fueler, Zero-waste meal). Credential narrative and dual-agent framing: see [`PITCH.md`](./PITCH.md).
+## 🏗️ Technical Stack
 
-### Environment (frontend)
+* **Language:** Python 3.11+
+* **API Framework:** FastAPI (async/await, Pydantic v2 Settings)
+* **Orchestration Engine:** LangGraph (StateGraph with conditional edge routing & human-in-the-loop checkpoints)
+* **Database & Memory:** SQLite / PostgreSQL with SQLAlchemy 2.0 & stdlib fallback
+* **Google Integration:** Google Calendar API v3 & Cloud Pub/Sub push receiver
+* **Swiggy MCP Layer:** Streamable HTTP Async Client + OAuth 2.1 PKCE wrapper + local offline mock MCP support
 
-Copy the example and edit as needed:
+---
+
+## 🚀 Quick Start (Local Setup)
+
+### 1. Prerequisites
+
+* Python 3.11 or newer
+* Node.js 20+ (for Next.js frontend if testing UI)
+* `ngrok` (for tunneling Google Cloud Pub/Sub webhooks locally)
+
+### 2. Environment Configuration
+
+Copy `.env.example` to `.env` or `backend/.env`:
 
 ```bash
-copy frontend\.env.example frontend\.env.local   # Windows
-# cp frontend/.env.example frontend/.env.local    # macOS/Linux
+cp backend/.env.example backend/.env
 ```
 
-See [`frontend/.env.example`](frontend/.env.example) for details.
+Configure your environment settings in `.env`:
 
-## Optional: run the FastAPI backend
+```env
+USE_MOCK_MCP=true
+NOTIFICATION_PLATFORM=console  # Options: console, discord, telegram, slack
+BASE_URL=http://localhost:8000
+GROQ_API_KEY=gsk_your_groq_api_key_here
+```
 
-Install and run:
+### 3. Install Dependencies & Start Server
 
 ```bash
-cd backend
-python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # macOS/Linux
+# Install dependencies
 pip install -r requirements.txt
-uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
+
+# Run FastAPI server
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Then point the UI at it by setting **`NEXT_PUBLIC_API_URL=http://127.0.0.1:8000`** in `frontend/.env.local` (no trailing slash). You get **offline mock MCP**: `POST /food`, `/im`, `/dineout` plus multi-step SSE chat — see [`docs/local-mock-mcp.md`](docs/local-mock-mcp.md) for prompts, `curl` samples, `LOCAL_MCP_HTTP`, and UX notes.
+Verify backend health at: `http://localhost:8000/health/concierge`
 
-CORS: the backend reads **`FRONTEND_ORIGIN`** or **`CORS_ORIGINS`** (`backend/main.py`). Set e.g. `FRONTEND_ORIGIN=http://localhost:3000` when developing.
+---
 
-### Docker (API only)
+## 🛰️ Google Webhook & ngrok Setup
+
+To receive real-time push notifications when Google Calendar events are created or updated:
+
+### Step 1: Tunnel your local port with ngrok
 
 ```bash
-docker build -t swiggy-nexus-api .
-docker run -p 8000:8000 -e FRONTEND_ORIGIN=http://localhost:3000 swiggy-nexus-api
+ngrok http 8000
 ```
 
-### Procfile / Heroku-style
+Copy the HTTPS forwarding address, e.g., `https://abc1234.ngrok-free.app`.
 
-[`Procfile`](Procfile) runs the API with `uvicorn` (adjust `PORT` as your host provides).
+### Step 2: Configure Google Cloud Pub/Sub Subscription
 
-## Deploy on Render (recommended — full stack)
+1. Go to your [Google Cloud Console Pub/Sub Subscriptions](https://console.cloud.google.com/cloudpubsub/subscription).
+2. Set the **Push Endpoint URL** to:
+   `https://abc1234.ngrok-free.app/webhooks/calendar`
+3. Set the authentication token header to match `GOOGLE_PUBSUB_VERIFICATION_TOKEN` in your `.env`.
 
-**One-click:** push to GitHub, then [Render → New Blueprint](https://dashboard.render.com) → connect this repo → **Apply**.
+---
 
-The root [`render.yaml`](render.yaml) provisions:
+## 🧪 End-to-End Testing Guide
 
-- **`swiggy-nexus-api`** — FastAPI + mock MCP (Docker)
-- **`swiggy-nexus-web`** — Next.js UI (auto-wired to the API)
+### Option A: Manual Endpoint Trigger (No Google Setup Required)
 
-Full walkthrough: [**docs/deploy-render.md**](docs/deploy-render.md)
-
-Optional: add `GROQ_API_KEY` on the API service and `NEXT_PUBLIC_GROQ_ENABLED=true` on the web service for LLM mode. Skip both for the deterministic WOW demo.
-
-## Deploy on Vercel (frontend only)
-
-1. Push this repo to GitHub/GitLab/Bitbucket.
-2. In [Vercel](https://vercel.com) → **New Project** → import the repo.
-3. Set **Root Directory** to **`frontend`** so builds use `frontend/package.json` and Next.js detection.
-4. **No env vars required** for the dummy (mocks ship with the app). Add **`NEXT_PUBLIC_API_URL`** only when your API is hosted elsewhere (HTTPS base URL, no trailing slash).
-
-Production build from repo root:
+You can trigger the full autonomous workflow directly via HTTP:
 
 ```bash
-npm run build
-npm run start
+curl -X POST "http://localhost:8000/api/concierge/trigger" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event_title": "Friday Team Social",
+    "event_time": "2026-07-26T19:00:00+05:30",
+    "event_location": "Home",
+    "attendee_emails": ["dani@nexus.ai", "priya@nexus.ai"],
+    "description": "Hosting team catchup #swiggy"
+  }'
 ```
 
-## NPM scripts (root)
+**Response Output:**
 
-| Script | Command |
-|--------|---------|
-| `npm run dev` | `next dev` in `frontend/` |
-| `npm run build` | `next build` in `frontend/` |
-| `npm run start` | `next start` in `frontend/` |
-| `npm run lint` | `next lint` in `frontend/` |
+```json
+{
+  "status": "paused_at_hitl_checkpoint",
+  "event_id": "manual_...",
+  "approval_request_id": "REQ-7B9F1A2D",
+  "mode": "ZERO_TOUCH_HOST",
+  "total_cost": 999.0,
+  "approve_endpoint": "http://localhost:8000/api/concierge/approve/REQ-7B9F1A2D"
+}
+```
 
-## License / disclaimer
+### Option B: Approving the HITL Checkpoint
 
-Demo and synthetic APIs only; verify behaviour before relying on outputs for real ordering or fulfilment decisions.
+Once the pipeline pauses at the HITL guardrail checkpoint, approve financial execution via:
+
+```bash
+curl -X POST "http://localhost:8000/api/concierge/approve/REQ-7B9F1A2D" \
+  -H "Content-Type: application/json" \
+  -d '{"approved": true}'
+```
+
+**Result:** The pipeline resumes, calls the `calendar_mutate` node, updates the calendar description with AI Sommelier pairing recommendations, and returns status `COMPLETED`.
+
+---
+
+## 📦 Project Structure
+
+```
+.
+├── app/
+│   ├── api/
+│   │   └── webhooks.py          # Google Pub/Sub receiver & HITL approval API
+│   ├── config.py                # Pydantic Settings v2 configuration
+│   ├── db/
+│   │   ├── models.py            # Taste Vault database schemas & SQLite fallback
+│   │   └── profiler.py          # Group preference constraint merging logic
+│   ├── graph/
+│   │   ├── nodes.py             # 7 LangGraph workflow nodes
+│   │   ├── state.py             # ConciergeState TypedDict definition
+│   │   └── workflow.py          # Compiled StateGraph & edge routers
+│   ├── mcp/
+│   │   ├── client.py            # Async Swiggy MCP Streamable HTTP client
+│   │   └── oauth.py             # OAuth 2.1 PKCE manager
+│   ├── services/
+│   │   ├── google_calendar.py   # Google Calendar API integration & watch setup
+│   │   ├── notifications.py     # Discord / Telegram / Slack webhook notifier
+│   │   └── profiler.py          # Taste Memory Vault profiler service
+│   └── main.py                  # Standalone FastAPI app
+├── backend/
+│   ├── main.py                  # Full stack FastAPI backend (includes Concierge)
+│   ├── mcp_client.py            # Mock MCP dispatcher client
+│   └── memory.py                # Core Nexus database memory
+├── mcp_server/                  # Local Mock MCP Servers (Food, Instamart, Dineout)
+├── tests/                       # Pytest suite
+├── requirements.txt             # Pinned project dependencies
+└── README.md                    # Project documentation
+```
+
+---
+
+## 🛡️ Security & Operational Guardrails
+
+1. **Idempotency:** Webhook ingestion uses `(event_id, updated_timestamp)` caching to prevent duplicate executions from minor RSVP toggles.
+2. **Graceful Degradation:** If Dineout `book_table` fails due to restaurant capacity, conditional routing automatically switches to Zero-Touch Host mode.
+3. **HITL Protection:** Financial order placements require explicit human approval via notification webhooks before dispatching transactional MCP tools.

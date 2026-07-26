@@ -14,3 +14,5 @@ coverage/
 !.env.example
 docs/_swiggy_cache/
 backend/nexus_memory.db
+*.db
+nexus_*.db

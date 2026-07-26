@@ -3369,11 +3369,12 @@ export interface ReportErrorInput {
 | --- | --- | --- |
 | Protocol | `{ "method", "params" }` on `/food`, `/im`, `/dineout` | JSON-RPC 2.0 `tools/call` on streamable HTTP |
 | Auth | None | OAuth 2.1 + PKCE Bearer token |
-| Food tools | 5: `get_addresses`, `search_restaurants`, `get_menu`, `add_to_cart`, `place_order` | 14 tools (see Section 6.1) |
-| Instamart tools | 3: `search_products`, `add_to_cart`, `checkout` | 13 tools (see Section 6.2) |
-| Dineout tools | 3: `search_restaurants`, `check_availability`, `book_table` | 8 tools incl. `get_available_slots`, `create_cart` |
-| Cart model | Client `requestId` + `cartId` in [`mcp_server/food/dispatcher.py`](mcp_server/food/dispatcher.py) | Server-side session cart; no client cart ID |
+| Food tools | **14** (full surface via aliases: `get_restaurant_menu`→`get_menu`, `update_food_cart`→`add_to_cart`, `place_food_order`→`place_order`) | 14 tools (see Section 6.1) |
+| Instamart tools | **13** (`update_cart`→`add_to_cart` + full order/address surface) | 13 tools (see Section 6.2) |
+| Dineout tools | **8** (`search_restaurants_dineout`→`search_restaurants`, `get_available_slots`→`check_availability`; `get_booking_status` accepts `orderId` or `bookingId`) | 8 tools |
+| Cart model | Client `requestId` + session store in [`mcp_server/session_store.py`](mcp_server/session_store.py) | Server-side session cart; no client cart ID |
 | Address shape | `line1`, `area`, `pin` in [`mock_data/pune_addresses.py`](mock_data/pune_addresses.py) | `fullAddress`, `addressCategory`; coords omitted from `get_addresses` |
-| LLM tools | Prefixed names in [`backend/llm_orchestrator.py`](backend/llm_orchestrator.py) (`food_*`, `im_*`) | Canonical tool names from MCP `tools/list` |
+| LLM tools | Prefixed names in [`backend/llm_orchestrator.py`](backend/llm_orchestrator.py) (`food_*`, `im_*`); concierge uses **official** names | Canonical tool names from MCP `tools/list` |
+| Cancel reservation | **Not available** (honest gap — same as production) | No `cancel_reservation` tool; guide users to app/customer care |
 
-**Phase 3 goal:** Mock server must expose all 35 tools with production input/output schemas so agent core logic requires zero changes when swapping `LOCAL_MCP_BASE` for `mcp.swiggy.com`.
+**Status:** Local mock exposes all **35** production tool names via [`mcp_server/tool_aliases.py`](mcp_server/tool_aliases.py). Concierge code calls official names only — flip `USE_MOCK_MCP=false` after staging OAuth with zero graph changes.

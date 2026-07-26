@@ -143,10 +143,20 @@ def handle_book_table(params: dict[str, Any]) -> tuple[bool, dict | None, dict |
 
 def handle_get_booking_status(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
     simulated_latency_jitter_ms()
-    bid = str(get_param(params, "bookingId", "booking_id") or "")
+    # Production docs use orderId; mock historically used bookingId — accept both.
+    bid = str(
+        get_param(params, "orderId", "order_id", "bookingId", "booking_id") or ""
+    )
     bk = get_booking(bid)
     if not bk:
-        return _error("NOT_FOUND", f"Booking {bid} not found")
+        return _error("NOT_FOUND", f"Booking/order {bid or '(empty)'} not found")
+    # Echo both IDs so clients using either field work.
+    if isinstance(bk, dict):
+        bk = {
+            **bk,
+            "orderId": bk.get("orderId") or bk.get("booking_id") or bk.get("bookingId") or bid,
+            "bookingId": bk.get("bookingId") or bk.get("booking_id") or bid,
+        }
     tool_log("dineout", "get_booking_status", params or {}, bk.get("status", "CONFIRMED"))
     return True, bk, None
 

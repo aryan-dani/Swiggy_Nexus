@@ -66,3 +66,16 @@ REST alone is brittle for autonomous commerce:
 3. Keep **SSE event shape** stable so Nexus UI does not churn.
 
 Questions welcome on the credential form — cite this file and the deployed demo URL.
+
+---
+
+## Addendum — Indian QoL Concierge (not a chatbot)
+
+Nexus Concierge is a **quality-of-life automation system**, not a chat bot:
+
+- **HITL-gated commerce** — carts/slots are staged with read tools; `book_table` / `checkout` / `place_food_order` run only after Telegram or Ops-tab Approve.
+- **Monsoon + micro-QoL** — Rooftop Rescue, Bhajiya & Chai, Guest SOS (`/guests N`), Late-Night Fuel Guard, IPL Timeout Sprint.
+- **Honest API limits** — no `cancel_reservation` in Swiggy MCP v1; rain pivots guide manual cancel in-app. Food cart ₹1000 / no scheduled delivery → T-45m/T-15m are scheduler-fired legs, not fake deferred delivery.
+- **Config flip** — same official tool names against the 35-tool local mock or `mcp.swiggy.com` (`USE_MOCK_MCP=false`).
+
+Setup: [`docs/concierge-setup.md`](docs/concierge-setup.md). Ops surface: Next.js **Concierge** tab.

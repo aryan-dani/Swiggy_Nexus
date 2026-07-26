@@ -25,10 +25,18 @@ git push origin main
 
 | Variable | Service | Required? |
 |----------|---------|-----------|
-| `GROQ_API_KEY` | `swiggy-nexus-api` | No — skip for deterministic demo. Add for Groq `mixtral-8x7b-32768`. |
-| `NEXT_PUBLIC_GROQ_ENABLED` | `swiggy-nexus-web` | Only if you set `GROQ_API_KEY` — set to `true`, then **manual redeploy** the web service. |
+| `GROQ_API_KEY` | `swiggy-nexus-api` | Yes for LLM chat + AI Sommelier |
+| `NEXT_PUBLIC_GROQ_ENABLED` | `swiggy-nexus-web` / Vercel | `true` when Groq is configured |
+| `BASE_URL` | `swiggy-nexus-api` | Public API URL (Telegram webhook + approve links) |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | API | HITL approvals |
+| `NOTIFICATION_PLATFORM` | API | `telegram` (or `console`) |
+| `INTERNAL_TICK_SECRET` | API | Shared secret for `POST /internal/tick` |
+| `OPENWEATHER_API_KEY` | API | Optional monsoon sensor |
+| `USE_MOCK_MCP` | API | Default `true` until Swiggy staging token |
 
-Leave both blank for the **WOW demo** (no LLM, fully repeatable).
+Full Concierge setup: [`docs/concierge-setup.md`](concierge-setup.md).
+
+Leave Telegram blank to use console HITL locally.
 
 ### 4. Open the app
 

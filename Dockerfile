@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 COPY mcp_server /app/mcp_server
 COPY mock_data /app/mock_data
 COPY backend /app/backend
+COPY app /app/app
 
 EXPOSE 8000
 

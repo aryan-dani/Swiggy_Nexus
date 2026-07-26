@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   Award,
   BarChart2,
+  CalendarHeart,
   ChevronRight,
   History,
   Library,
@@ -131,6 +132,11 @@ export function AppSidebar({
         </motion.button>
 
         <div className="mt-4 space-y-3 pb-2">
+          <SidebarLink
+            icon={<CalendarHeart size={18} />}
+            label="Concierge"
+            onClick={() => close("concierge")}
+          />
           <SidebarLink
             icon={<Library size={18} />}
             label="Library"

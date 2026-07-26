@@ -18,6 +18,7 @@ import McpFeed from "@/components/mcp-feed";
 import { NexusCommandCenter } from "@/components/nexus-command-center";
 import { NexusSignalsBar } from "@/components/nexus-signals-bar";
 import { NexusWowLauncher } from "@/components/nexus-wow-launcher";
+import { ConciergeOps } from "@/components/concierge-ops";
 import { VariantPicker } from "@/components/variant-picker";
 import type { FeedItem } from "@/lib/api";
 import type { NexusCardResult } from "@/components/nexus-result-card";
@@ -227,6 +228,10 @@ function HomeInner() {
             ) : activeTab === "library" ? (
               <motion.div variants={fadeUp} className="w-full px-2">
                 <LibraryView />
+              </motion.div>
+            ) : activeTab === "concierge" ? (
+              <motion.div variants={fadeUp} className="w-full px-2">
+                <ConciergeOps />
               </motion.div>
             ) : activeTab === "analytics" ? (
               <motion.div variants={fadeUp} className="w-full px-2">
