@@ -146,7 +146,21 @@ def health() -> dict[str, Any]:
     return {
         "status": "ok",
         "service": "swiggy-nexus-backend",
-        "version": "0.2.0",
+        "version": "0.3.0",
+        "groq_configured": bool(os.environ.get("GROQ_API_KEY", "").strip()),
+        "concierge": True,
+        "use_mock_mcp": os.environ.get("USE_MOCK_MCP", "true"),
+    }
+
+
+@app.get("/health/concierge")
+def health_concierge() -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "service": "indian-qol-concierge",
+        "version": "0.3.0",
+        "use_mock_mcp": os.environ.get("USE_MOCK_MCP", "true"),
+        "notification_platform": os.environ.get("NOTIFICATION_PLATFORM", "console"),
         "groq_configured": bool(os.environ.get("GROQ_API_KEY", "").strip()),
     }
 
@@ -159,13 +173,14 @@ def health_detailed() -> dict[str, Any]:
     return {
         "status": "ok",
         "service": "swiggy-nexus-backend",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "uptime_seconds": uptime_s,
         "groq_configured": bool(os.environ.get("GROQ_API_KEY", "").strip()),
         "groq_model": os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
         "tool_count": len(tool_names),
         "tools": tool_names,
         "verticals": ["food", "im", "dineout"],
+        "concierge": True,
     }
 
 
