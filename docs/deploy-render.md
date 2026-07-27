@@ -73,8 +73,24 @@ If you prefer Vercel for the UI and Render for the API only:
 
 1. Deploy **only** `swiggy-nexus-api` from the Blueprint (or delete the web service after).
 2. Vercel → import repo → **Root Directory:** `frontend`.
-3. Set `NEXT_PUBLIC_API_URL=https://swiggy-nexus-api.onrender.com`.
+3. Set `NEXT_PUBLIC_API_URL=https://swiggy-nexus-api.onrender.com` (**API**, not `swiggy-nexus-web`).
 4. On Render API, `CORS_ORIGIN_REGEX` already allows `*.vercel.app`.
+5. Redeploy Vercel after changing env (Next inlines `NEXT_PUBLIC_*` at build time).
+
+### Common failure: CORS / Concierge 404 from Vercel
+
+If the browser calls `https://swiggy-nexus-web.onrender.com/api/concierge/...`, the env points at the **frontend** service. Concierge routes only exist on:
+
+`https://swiggy-nexus-api.onrender.com`
+
+Fix in Vercel → Project → Settings → Environment Variables:
+
+```
+NEXT_PUBLIC_API_URL=https://swiggy-nexus-api.onrender.com
+NEXT_PUBLIC_GROQ_ENABLED=true
+```
+
+Then **Redeploy**. API already returns `Access-Control-Allow-Origin` for `https://swiggy-nexus.vercel.app`.
 
 ## Troubleshooting
 

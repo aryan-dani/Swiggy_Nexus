@@ -13,9 +13,11 @@ services:
       - key: PYTHONPATH
         value: /app
       - key: CORS_ORIGINS
-        value: http://localhost:3000,http://127.0.0.1:3000
+        value: http://localhost:3000,http://127.0.0.1:3000,https://swiggy-nexus.vercel.app
       - key: CORS_ORIGIN_REGEX
         value: https://.*\.(onrender|vercel)\.app
+      - key: FRONTEND_ORIGIN
+        value: https://swiggy-nexus.vercel.app
 
   - type: web
     name: swiggy-nexus-web

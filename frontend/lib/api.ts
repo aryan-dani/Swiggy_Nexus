@@ -26,9 +26,16 @@ export function normalizeApiBase(raw?: string): string {
 /**
  * Same-origin `/api/*` when unset — uses built-in Route Handlers in `app/api/` (demo / Vercel).
  * Set `NEXT_PUBLIC_API_URL` to your FastAPI base (no trailing slash) to use an external backend.
+ *
+ * Must be the **API** host (`swiggy-nexus-api.onrender.com`), not the Render Next.js web service.
  */
 export function getApiBase(): string {
-  return normalizeApiBase(process.env.NEXT_PUBLIC_API_URL);
+  let base = normalizeApiBase(process.env.NEXT_PUBLIC_API_URL);
+  // Guard common misconfig: Concierge lives on FastAPI, not the frontend web service.
+  if (base.includes("swiggy-nexus-web.")) {
+    base = base.replace("swiggy-nexus-web.", "swiggy-nexus-api.");
+  }
+  return base;
 }
 
 export async function postChatStream(

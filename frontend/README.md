@@ -28,8 +28,8 @@ Opens [http://localhost:3000](http://localhost:3000).
 
 | Mode | Configuration |
 |------|----------------|
-| **Demo / Vercel** | Leave **`NEXT_PUBLIC_API_URL`** unset. The UI uses [`app/api/`](./app/api/) Route Handlers on the same origin. |
-| **External FastAPI** | Set `NEXT_PUBLIC_API_URL` to your API base URL (see [`.env.example`](./.env.example)). |
+| **Demo / Vercel (chat-only mocks)** | Leave **`NEXT_PUBLIC_API_URL`** unset. Chat uses same-origin Route Handlers. |
+| **Concierge / full FastAPI** | Set `NEXT_PUBLIC_API_URL=https://swiggy-nexus-api.onrender.com` (the **API** service, not `-web`). Redeploy after changing. |
 
 ## Next.js resources
 
