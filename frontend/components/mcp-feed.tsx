@@ -11,7 +11,9 @@ import { BookingTicket } from "@/components/booking-ticket";
 import { ChronoHostPanel } from "@/components/chrono-host-panel";
 import { GoToShelf } from "@/components/go-to-shelf";
 import { JoinStripCard } from "@/components/deadlock-arena";
+import { LiveTrackCard } from "@/components/live-track-card";
 import { SentimentComfortCard } from "@/components/sentiment-comfort-card";
+import { useNexusSession } from "@/lib/nexus-session-context";
 import type { FeedItem } from "@/lib/api";
 import { mapFeedItemToNexusCard } from "@/lib/feed-mapper";
 import { nexusToast } from "@/lib/nexus-toast-bus";
@@ -64,6 +66,7 @@ export default function McpFeed({
   watchParty,
   arenaSlot,
 }: McpFeedProps) {
+  const { activeFoodOrderId, activeImOrderId } = useNexusSession();
   const chronoBundle = items.find((i) => i.type === "event_bundle");
   const joinStrip = items.find((i) => i.type === "join_strip");
   const comfortCard = items.find((i) => i.type === "comfort_proposal");
@@ -190,6 +193,8 @@ export default function McpFeed({
             )}
             {joinStrip && <JoinStripCard item={joinStrip} />}
             {comfortCard && <SentimentComfortCard item={comfortCard} />}
+            {activeImOrderId && <LiveTrackCard vertical="im" orderId={activeImOrderId} />}
+            {activeFoodOrderId && <LiveTrackCard vertical="food" orderId={activeFoodOrderId} />}
             {bookingCard && (
               <BookingTicket
                 venueName={bookingCard.title}

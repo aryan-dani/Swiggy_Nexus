@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 import uuid
+from datetime import datetime
 from typing import Any
 
 from mock_data.active_orders import get_im_order, save_im_order
@@ -155,15 +156,33 @@ def handle_checkout(params: dict[str, Any]) -> tuple[bool, dict | None, dict | N
     oid = f"IM_ORD_{uuid.uuid4().hex[:8].upper()}"
     eta = random.randint(18, 45)
     msg = "Swiggy Instamart order placed successfully. Packed and out for delivery."
+    line_items = [
+        {
+            "spinId": l.get("spinId"),
+            "name": l.get("name"),
+            "quantity": int(l.get("qty") or l.get("quantity") or 1),
+            "unit_price_inr": int(l.get("unit_price_inr") or 0),
+            "line_total_inr": int(l.get("line_total_inr") or 0),
+        }
+        for l in session.im.lines
+    ]
     data = {
         "order_id": oid,
         "orderId": oid,
         "cart_id": cart_id,
         "eta_mins": eta,
         "subtotal_inr": subtotal,
+        "items": line_items,
+        "placed_at": datetime.utcnow().isoformat(),
         "message": msg,
     }
     save_im_order(data)
+    try:
+        from mcp_server.order_history import record_im_order
+
+        record_im_order(oid, line_items)
+    except Exception:  # noqa: BLE001 — history is best-effort, never block checkout
+        pass
     clear_im_cart(sid)
     tool_log("im", "checkout", params or {}, f"placed {oid}")
     return True, data, None

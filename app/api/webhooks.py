@@ -9,6 +9,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
+from pydantic import BaseModel
 
 from app.api.hitl import router as hitl_router
 from app.config import settings
@@ -29,7 +30,7 @@ from app.schemas import (
     SimulateWeatherBody,
     WeatherAlert,
 )
-from app.services import qol_triggers
+from app.services import bill_split, pantry, qol_triggers
 from app.services.google_calendar import fetch_calendar_event
 from app.services.match import match_provider
 from app.services.scheduler import run_tick
@@ -240,6 +241,39 @@ async def simulate_fuel() -> dict[str, Any]:
     qol_triggers.force_fuel_guard(True)
     fired = await qol_triggers.check_fuel_guard()
     return {"trigger": fired}
+
+
+@router.get("/api/concierge/pantry")
+def concierge_pantry() -> dict[str, Any]:
+    """Pantry radar — per-SKU depletion predictions from Instamart history."""
+    return {"items": pantry.get_pantry_status()}
+
+
+@router.post("/api/concierge/simulate/pantry")
+async def simulate_pantry() -> dict[str, Any]:
+    fired = await pantry.check_pantry_refill(force=True)
+    return fired or {"status": "nothing_low"}
+
+
+class SplitBody(BaseModel):
+    total_inr: float
+    attendees: list[str]
+    order_id: str | None = None
+    title: str = "Bill split"
+
+
+@router.post("/api/concierge/split")
+async def concierge_split(body: SplitBody) -> dict[str, Any]:
+    """Nexus extension — BHIM-style equal split with mock UPI links."""
+    try:
+        return await bill_split.split_and_notify(
+            body.total_inr,
+            body.attendees,
+            order_id=body.order_id,
+            title=body.title,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 @router.post("/internal/tick")

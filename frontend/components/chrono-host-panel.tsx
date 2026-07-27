@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { useState } from "react";
 
 import { callMcp } from "@/lib/mcp-client";
+import { SplitBillButton } from "@/components/split-bill-card";
 import { useNexusSession } from "@/lib/nexus-session-context";
 import { nexusToast } from "@/lib/nexus-toast-bus";
 import { neoSpring } from "@/lib/motion";
@@ -74,8 +75,11 @@ export function ChronoHostPanel({
   const guestCount = Number(guests) || 12;
   const imTotal = Number(instamart?.total ?? 0);
   const foodTotal = Number(food?.total ?? 0);
+  const costForTwo = Number(dineout?.costForTwo ?? 0);
+  const dineEstimate = costForTwo > 0 ? Math.round((costForTwo / 2) * guestCount) : 0;
   const budget = Number(meta.budgetInr ?? guestCount * 800);
   const spent = imTotal + foodTotal;
+  const grandTotal = spent + dineEstimate;
 
   const dineTitle =
     typeof dineout?.restaurant === "string"
@@ -165,7 +169,11 @@ export function ChronoHostPanel({
           icon={UtensilsCrossed}
           label="Dineout"
           title={dineTitle}
-          detail="Table ~8 PM"
+          detail={
+            dineEstimate
+              ? `Table ~8 PM · est ₹${dineEstimate} (pay at venue)`
+              : "Table ~8 PM"
+          }
           accent="bg-orange-50"
           step={legSteps[0]}
           action={
@@ -207,9 +215,17 @@ export function ChronoHostPanel({
           }
         />
       </div>
-      <p className="mt-3 text-[10px] font-medium text-violet-800">
-        Food has no scheduled delivery in v1 — dessert uses a 10 PM reminder toast after confirm.
-      </p>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[10px] font-medium text-violet-800">
+          Food has no scheduled delivery in v1 — dessert uses a 10 PM reminder toast after confirm.
+        </p>
+        {grandTotal > 0 && (
+          <SplitBillButton
+            totalInr={grandTotal}
+            title={`Evening bundle · ${guestCount} guests`}
+          />
+        )}
+      </div>
     </motion.div>
   );
 }

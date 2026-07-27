@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Circle, Loader2 } from "lucide-react";
+import { Check, Circle, Loader2, XCircle } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 
 import { neoSpring } from "@/lib/motion";
@@ -84,11 +84,13 @@ export function DemoDirector({
   activeStep,
   caption,
   visible,
+  failed = false,
   className,
 }: {
   activeStep: DemoStepId | null;
   caption?: string;
   visible: boolean;
+  failed?: boolean;
   className?: string;
 }) {
   if (!visible) return null;
@@ -103,29 +105,43 @@ export function DemoDirector({
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -6 }}
         transition={neoSpring}
-        className={cn("bento-card-soft space-y-2 bg-violet-50/80 p-3", className)}
+        className={cn(
+          "bento-card-soft space-y-2 p-3",
+          failed ? "border-red-300 bg-red-50/80" : "bg-violet-50/80",
+          className
+        )}
       >
-        <p className="font-display text-[10px] font-black uppercase tracking-widest text-violet-800">
-          Demo Director
+        <p
+          className={cn(
+            "font-display text-[10px] font-black uppercase tracking-widest",
+            failed ? "text-red-800" : "text-violet-800"
+          )}
+        >
+          Demo Director{failed ? " · failed" : ""}
         </p>
         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           {DEMO_STEPS.map((step, i) => {
-            const done = i < activeIdx;
+            const done = !failed && i < activeIdx;
             const active = i === activeIdx;
+            const failedHere = failed && active;
             return (
               <div key={step.id} className="flex items-center gap-1.5">
                 {i > 0 && <span className="hidden h-px w-3 bg-black/15 sm:block" aria-hidden />}
                 <span
                   className={cn(
                     "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold",
+                    failedHere && "border-red-600 bg-red-100 text-red-900",
                     done && "border-emerald-600/40 bg-emerald-50 text-emerald-800",
-                    active && "border-violet-600 bg-violet-100 text-violet-900",
-                    !done && !active && "border-black/10 bg-white text-slate-400"
+                    !failedHere && active && !failed && "border-violet-600 bg-violet-100 text-violet-900",
+                    !done && !active && "border-black/10 bg-white text-slate-400",
+                    failed && !active && i < activeIdx && "border-black/10 bg-white text-slate-400"
                   )}
                 >
-                  {done ? (
+                  {failedHere ? (
+                    <XCircle className="h-3 w-3" aria-hidden />
+                  ) : done ? (
                     <Check className="h-3 w-3" aria-hidden />
-                  ) : active ? (
+                  ) : active && !failed ? (
                     <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
                   ) : (
                     <Circle className="h-2.5 w-2.5" aria-hidden />
@@ -136,7 +152,12 @@ export function DemoDirector({
             );
           })}
         </div>
-        <p className="font-sans text-[11px] font-medium text-slate-700">
+        <p
+          className={cn(
+            "font-sans text-[11px] font-medium",
+            failed ? "text-red-800" : "text-slate-700"
+          )}
+        >
           {caption || current.caption}
         </p>
       </motion.div>
@@ -170,7 +191,8 @@ export function DemoSummaryCard({
         Demo complete
       </p>
       <p className="mt-1 font-sans text-sm font-medium text-black">
-        Used {toolCount} MCP tools across {verticals} verticals
+        Used {toolCount} MCP {toolCount === 1 ? "tool" : "tools"} across {verticals}{" "}
+        {verticals === 1 ? "vertical" : "verticals"}
         {stagedInr != null && stagedInr > 0 ? ` · ₹${Math.round(stagedInr)} staged` : ""}.
         Nothing was charged — confirm legs in the Activity rail.
       </p>

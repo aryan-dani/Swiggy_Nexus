@@ -606,7 +606,10 @@ def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generato
             name = tool_call.function.name
             try:
                 args = json.loads(tool_call.function.arguments)
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, TypeError):
+                args = {}
+            # Groq may emit "null" / non-object arguments — never let None reach `in` checks.
+            if not isinstance(args, dict):
                 args = {}
 
             # Split "food_search_restaurants" → vertical="food", method="search_restaurants"
@@ -633,7 +636,7 @@ def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generato
 
                 # ── Feed rendering ──────────────────────────────────────
                 if method == "search_restaurants" and isinstance(data, dict) and "restaurants" in data:
-                    for r in data["restaurants"]:
+                    for r in data.get("restaurants") or []:
                         _add_feed({
                             "type": "restaurant" if vertical == "food" else "dineout",
                             "title": r.get("name", "Venue"),
@@ -641,7 +644,7 @@ def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generato
                             "meta": {"restaurant_id": r.get("restaurant_id") or r.get("id")},
                         })
                 elif method == "search_menu" and isinstance(data, dict) and "items" in data:
-                    for item in data["items"]:
+                    for item in data.get("items") or []:
                         veg_badge = "🟢" if item.get("vegetarian") else "🔴"
                         _add_feed({
                             "type": "food",
@@ -657,8 +660,8 @@ def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generato
                             },
                         })
                 elif method in ("get_menu", "get_restaurant_menu") and isinstance(data, dict):
-                    for cat in data.get("categories", []):
-                        for item in cat.get("items", []):
+                    for cat in data.get("categories") or []:
+                        for item in cat.get("items") or []:
                             veg_badge = "🟢" if item.get("vegetarian") else "🔴"
                             _add_feed({
                                 "type": "food",
@@ -670,7 +673,7 @@ def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generato
                                 },
                             })
                 elif method == "search_products" and isinstance(data, dict) and "products" in data:
-                    for p in data["products"]:
+                    for p in data.get("products") or []:
                         _add_feed({
                             "type": "grocery",
                             "title": p.get("name", "Product"),
@@ -682,7 +685,7 @@ def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generato
                             },
                         })
                 elif method == "your_go_to_items" and isinstance(data, dict) and "products" in data:
-                    for p in data["products"]:
+                    for p in data.get("products") or []:
                         _add_feed({
                             "type": "grocery",
                             "title": f"⚡ {p.get('name', 'Item')}",
@@ -713,7 +716,7 @@ def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generato
                         "meta": data,
                     })
                 elif method in ("fetch_food_coupons",) and isinstance(data, dict) and data.get("coupons"):
-                    for c in data["coupons"][:3]:
+                    for c in (data.get("coupons") or [])[:3]:
                         _add_feed({
                             "type": "coupon",
                             "title": f"🏷️ {c.get('code', 'COUPON')}",
@@ -753,4 +756,14 @@ def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generato
                     "role": "tool",
                     "tool_call_id": tool_call.id,
                     "content": json.dumps({"error": e.payload}),
+                })
+            except Exception as e:  # noqa: BLE001 — one bad tool call must not kill the SSE stream
+                yield {
+                    "type": "thinking",
+                    "payload": {"text": f"Executor recovered from {name}: {e}"},
+                }
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": json.dumps({"error": {"code": "EXECUTOR_ERROR", "message": str(e)}}),
                 })

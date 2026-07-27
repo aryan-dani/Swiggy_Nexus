@@ -447,9 +447,17 @@ def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[st
     food_cart_view = call_tool("food", "get_food_cart", {"requestId": uuid_session, "addressId": addr_id})
     yield {"type": "tool", "payload": _sse_tool("food", "/food", "get_food_cart", {"addressId": addr_id}, food_cart_view)}
 
+    _rest0 = (ds.get("restaurants") or [{}])[0]
     bundle = {
         "event": event_title,
-        "dineout": {"restaurantId": rest_id, "slot": slot_label, "guests": guests, "status": "STAGED"},
+        "dineout": {
+            "restaurantId": rest_id,
+            "restaurant": _rest0.get("name"),
+            "slot": slot_label,
+            "guests": guests,
+            "status": "STAGED",
+            "costForTwo": _rest0.get("costForTwo") or _rest0.get("price_for_two_inr"),
+        },
         "instamart": im_cart_view if isinstance(im_cart_view, dict) else {},
         "food": food_cart_view if isinstance(food_cart_view, dict) else {},
     }

@@ -21,6 +21,7 @@ import {
 } from "@/components/demo-director";
 import { NexusLogoMark } from "@/components/nexus-logo-mark";
 import { NexusSignalsBar } from "@/components/nexus-signals-bar";
+import { VoiceMicButton } from "@/components/voice-mic-button";
 import { renderSimpleMarkdown, ToolTraceTheater } from "@/components/tool-trace-theater";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { FeedItem } from "@/lib/api";
@@ -118,6 +119,8 @@ export default function ChatInterface({
   const [demoCaption, setDemoCaption] = useState("");
   const [showDirector, setShowDirector] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
+  const [demoFailed, setDemoFailed] = useState(false);
+  const [runStats, setRunStats] = useState<{ tools: number; verticals: number }>({ tools: 0, verticals: 0 });
   const [verticalsHit, setVerticalsHit] = useState<Set<string>>(new Set());
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -155,6 +158,8 @@ export default function ChatInterface({
       setRpcLogs([]);
       setToolChips([]);
       setShowSummary(false);
+      setDemoFailed(false);
+      setRunStats({ tools: 0, verticals: 0 });
       setVerticalsHit(new Set());
 
       const chronoMode =
@@ -170,6 +175,8 @@ export default function ChatInterface({
 
       let assistantText = "";
       let sawBundle = false;
+      let streamFailed = false;
+      let runToolCount = 0;
       const verts = new Set<string>();
 
       await postChatStream(text, chatContext, (ev) => {
@@ -185,6 +192,7 @@ export default function ChatInterface({
           appendLog(ev.payload);
           recordToolFromStream(ev.payload);
           setToolCount(getToolCoverage().used);
+          runToolCount += 1;
           const method = String(ev.payload.method ?? "mcp_tool");
           setLiveTool(method);
           setStreamPreview(captionForMethod(method));
@@ -213,9 +221,13 @@ export default function ChatInterface({
         }
         if (ev.type === "assistant") {
           assistantText = ev.payload.text;
+          if (/^(LLM error|Error)[:\s]/i.test(assistantText)) {
+            streamFailed = true;
+          }
         }
         if (ev.type === "error") {
           assistantText = `Error: ${ev.payload.message}`;
+          streamFailed = true;
         }
         if (ev.type === "done") {
           if (ev.payload.feed_items?.length) {
@@ -247,8 +259,19 @@ export default function ChatInterface({
       setStreamPreview("");
       setBusy(false);
       if (chronoMode) {
-        setDemoStep("bundle");
-        setShowSummary(true);
+        if (streamFailed) {
+          // Keep the director on the step where it died; never fake completion.
+          setDemoFailed(true);
+          setDemoCaption("Run failed — see the error message below. Try again.");
+          setShowSummary(false);
+        } else if (sawBundle) {
+          setDemoStep("bundle");
+          setRunStats({ tools: runToolCount, verticals: new Set([...verts].filter((v) => v !== "other")).size });
+          setShowSummary(true);
+        } else {
+          // Finished without a bundle (plain answer) — hide the director quietly.
+          setShowDirector(false);
+        }
       }
     },
     [appendLog, busy, chatContext, input, onChatComplete, onFeedItems]
@@ -265,13 +288,6 @@ export default function ChatInterface({
 
   const empty = msgs.length === 0 && !busy;
 
-  const uniqueVerts = useMemo(() => {
-    const s = new Set(
-      [...verticalsHit].filter((v) => v !== "other")
-    );
-    return Math.max(s.size, showSummary ? 1 : 0);
-  }, [verticalsHit, showSummary]);
-
   return (
     <div className="flex h-full min-h-0 max-h-[min(78vh,880px)] flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
@@ -284,9 +300,10 @@ export default function ChatInterface({
       </div>
 
       <DemoDirector
-        visible={showDirector && (busy || showSummary)}
+        visible={showDirector && (busy || showSummary || demoFailed)}
         activeStep={demoStep}
         caption={demoCaption}
+        failed={demoFailed}
       />
 
       <div
@@ -351,8 +368,8 @@ export default function ChatInterface({
 
         {showSummary && !busy && (
           <DemoSummaryCard
-            toolCount={toolCount}
-            verticals={uniqueVerts || 3}
+            toolCount={runStats.tools || toolChips.length}
+            verticals={runStats.verticals}
             onOpenBundle={() => {
               document.getElementById("nexus-activity-rail")?.scrollIntoView({
                 behavior: "smooth",
@@ -496,6 +513,13 @@ export default function ChatInterface({
           <button type="button" className="text-slate-400 hover:text-black" aria-label="Attach">
             <PlusCircle size={22} aria-hidden />
           </button>
+          <VoiceMicButton
+            disabled={busy}
+            onTranscript={(text) => {
+              setInput(text);
+              void runSend(text);
+            }}
+          />
           <input
             autoFocus
             className="min-w-0 flex-1 border-none bg-transparent py-2.5 font-sans text-sm font-medium text-black outline-none placeholder:text-slate-400"

@@ -117,6 +117,8 @@ class ApprovalRequest(BaseModel):
         "guest_sos",
         "fuel_guard",
         "ipl_timeout",
+        "pantry_refill",
+        "voice_order",
     ] = "calendar_concierge"
     status: Literal["PENDING", "APPROVED", "REJECTED", "EXPIRED"] = "PENDING"
     title: str = ""

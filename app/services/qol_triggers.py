@@ -47,12 +47,15 @@ def _mark(key: str) -> None:
 
 
 async def run_all_qol_checks() -> list[dict[str, Any]]:
+    from app.services.pantry import check_pantry_refill
+
     results: list[dict[str, Any]] = []
     weather = await get_weather_provider().get_current()
     results.append(await check_rooftop_rescue(weather))
     results.append(await check_bhajiya_chai(weather))
     results.append(await check_fuel_guard())
     results.append(await check_ipl_timeout())
+    results.append(await check_pantry_refill())
     return [r for r in results if r]
 
 

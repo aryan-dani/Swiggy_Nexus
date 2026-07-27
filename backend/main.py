@@ -16,7 +16,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -254,6 +254,46 @@ def sidebar_dev_mode(body: DevModeBody) -> dict[str, Any]:
 
 def _format_sse(event: dict[str, Any]) -> str:
     return f"data: {json.dumps(event, default=str)}\n\n"
+
+
+@app.post("/api/voice/transcribe")
+async def voice_transcribe(audio: UploadFile = File(...)) -> dict[str, Any]:
+    """Voice-to-Cart: transcribe a mic/WhatsApp-style voice note via Groq Whisper."""
+    api_key = os.environ.get("GROQ_API_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="GROQ_API_KEY not configured — voice transcription unavailable.",
+        )
+    try:
+        from groq import Groq
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail=f"Groq SDK unavailable: {e}") from e
+
+    raw = await audio.read()
+    if not raw:
+        raise HTTPException(status_code=422, detail="Empty audio upload")
+    if len(raw) > 8 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Audio too large (8MB max)")
+
+    filename = audio.filename or "voice-note.webm"
+    model = os.environ.get("GROQ_WHISPER_MODEL", "whisper-large-v3-turbo")
+    client = Groq(api_key=api_key)
+    try:
+        result = client.audio.transcriptions.create(
+            file=(filename, raw),
+            model=model,
+            response_format="json",
+            language="en",
+        )
+        transcript = (getattr(result, "text", "") or "").strip()
+    except Exception as e:  # noqa: BLE001
+        log.warning("Whisper transcription failed: %s", e)
+        raise HTTPException(status_code=502, detail=f"Transcription failed: {e}") from e
+
+    if not transcript:
+        raise HTTPException(status_code=422, detail="Could not hear anything in that note")
+    return {"transcript": transcript, "model": model, "bytes": len(raw)}
 
 
 @app.post("/api/chat/stream")
