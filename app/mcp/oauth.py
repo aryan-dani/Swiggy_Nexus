@@ -52,7 +52,9 @@ class SwiggyOAuthPKCE:
             "scope": "mcp:tools mcp:resources",
         }
         
-        query_string = "&".join([f"{k}={v}" for k, v in params.items()])
+        from urllib.parse import urlencode
+        
+        query_string = urlencode(params)
         auth_url = f"{self.auth_base_url}/authorize?{query_string}"
         return auth_url, code_verifier
 

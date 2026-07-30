@@ -134,9 +134,10 @@ async def handle_rooftop_choice(choice: str) -> dict[str, Any]:
                 "longitude": settings.HOME_LNG,
             },
         )
+        eid = f"rooftop-indoor-{uuid.uuid4().hex[:6]}"
         approval = create_approval(
-            event_id=f"rooftop-indoor-{uuid.uuid4().hex[:6]}",
-            thread_id=f"rooftop-indoor-{uuid.uuid4().hex[:6]}",
+            event_id=eid,
+            thread_id=eid,
             trigger_type="rooftop_rescue",
             title="Rooftop Rescue · Indoor rebook",
             summary="Re-book indoor slot after rain pivot",
@@ -210,9 +211,10 @@ async def handle_rooftop_choice(choice: str) -> dict[str, Any]:
     except Exception:  # noqa: BLE001
         pass
 
+    eid = f"rooftop-home-{uuid.uuid4().hex[:6]}"
     approval = create_approval(
-        event_id=f"rooftop-home-{uuid.uuid4().hex[:6]}",
-        thread_id=f"rooftop-home-{uuid.uuid4().hex[:6]}",
+        event_id=eid,
+        thread_id=eid,
         trigger_type="rooftop_rescue",
         title="Rooftop Rescue · Order home",
         summary="Same kitchen delivery · cancel old table manually in Swiggy app",

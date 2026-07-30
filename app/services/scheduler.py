@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.config import settings
@@ -98,4 +98,4 @@ async def run_tick() -> dict[str, Any]:
     from app.services.qol_triggers import run_all_qol_checks
 
     results = await run_all_qol_checks()
-    return {"ok": True, "results": results, "ts": datetime.utcnow().isoformat()}
+    return {"ok": True, "results": results, "ts": datetime.now(timezone.utc).isoformat()}

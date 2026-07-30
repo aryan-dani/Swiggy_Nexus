@@ -24,6 +24,7 @@ class GroupConstraintProfile(BaseModel):
     must_be_eggetarian: bool = False
     must_be_gluten_free: bool = False
     must_be_jain: bool = False
+    must_be_halal: bool = False
 
     # Maximum spice level tolerable by the group (lowest tolerance of any attendee)
     max_spice_tolerance: int = 5
@@ -71,6 +72,7 @@ def _get_preferences_sqlalchemy(cleaned_emails: list[str]) -> GroupConstraintPro
         must_be_eggetarian = False
         must_be_gluten_free = False
         must_be_jain = False
+        must_be_halal = False
 
         max_spice = 5
         allergies_set: set[str] = set()
@@ -106,6 +108,8 @@ def _get_preferences_sqlalchemy(cleaned_emails: list[str]) -> GroupConstraintPro
                 must_be_gluten_free = True
             if dp.is_jain:
                 must_be_jain = True
+            if getattr(dp, "is_halal", False):
+                must_be_halal = True
 
             if dp.spice_tolerance < max_spice:
                 max_spice = dp.spice_tolerance
@@ -134,6 +138,7 @@ def _get_preferences_sqlalchemy(cleaned_emails: list[str]) -> GroupConstraintPro
             must_be_eggetarian=must_be_eggetarian,
             must_be_gluten_free=must_be_gluten_free,
             must_be_jain=must_be_jain,
+            must_be_halal=must_be_halal,
             max_spice_tolerance=max_spice,
             all_allergies=sorted(list(allergies_set)),
             all_disliked_ingredients=sorted(list(disliked_set)),
@@ -151,6 +156,7 @@ def _get_preferences_sqlite(cleaned_emails: list[str]) -> GroupConstraintProfile
     must_be_eggetarian = False
     must_be_gluten_free = False
     must_be_jain = False
+    must_be_halal = False
 
     max_spice = 5
     allergies_set: set[str] = set()
@@ -167,7 +173,7 @@ def _get_preferences_sqlite(cleaned_emails: list[str]) -> GroupConstraintProfile
         for email in cleaned_emails:
             cur.execute("""
                 SELECT u.email, u.full_name, dp.is_vegetarian, dp.is_vegan, dp.is_eggetarian, 
-                       dp.is_gluten_free, dp.is_jain, dp.spice_tolerance, dp.allergies_json, 
+                       dp.is_gluten_free, dp.is_jain, dp.is_halal, dp.spice_tolerance, dp.allergies_json, 
                        dp.fav_cuisines_json, dp.disliked_ingredients_json
                 FROM users u
                 LEFT JOIN dietary_profiles dp ON u.id = dp.user_id
@@ -187,6 +193,7 @@ def _get_preferences_sqlite(cleaned_emails: list[str]) -> GroupConstraintProfile
             recognized_emails.append(email)
             is_veg = bool(row["is_vegetarian"])
             is_vegan = bool(row["is_vegan"])
+            is_halal = bool(row["is_halal"]) if "is_halal" in row.keys() else False
             spice = int(row["spice_tolerance"] or 3)
             allergies = json.loads(row["allergies_json"] or "[]")
             cuisines = json.loads(row["fav_cuisines_json"] or "[]")
@@ -199,6 +206,7 @@ def _get_preferences_sqlite(cleaned_emails: list[str]) -> GroupConstraintProfile
                 "profile": {
                     "is_vegetarian": is_veg,
                     "is_vegan": is_vegan,
+                    "is_halal": is_halal,
                     "spice_tolerance": spice,
                     "allergies": allergies,
                     "fav_cuisines": cuisines,
@@ -210,6 +218,8 @@ def _get_preferences_sqlite(cleaned_emails: list[str]) -> GroupConstraintProfile
                 must_be_vegan = True
             if is_veg or is_vegan:
                 must_be_vegetarian = True
+            if is_halal:
+                must_be_halal = True
 
             if spice < max_spice:
                 max_spice = spice
@@ -238,6 +248,7 @@ def _get_preferences_sqlite(cleaned_emails: list[str]) -> GroupConstraintProfile
         must_be_eggetarian=must_be_eggetarian,
         must_be_gluten_free=must_be_gluten_free,
         must_be_jain=must_be_jain,
+        must_be_halal=must_be_halal,
         max_spice_tolerance=max_spice,
         all_allergies=sorted(list(allergies_set)),
         all_disliked_ingredients=sorted(list(disliked_set)),

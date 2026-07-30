@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json
 import logging
@@ -25,13 +26,13 @@ DEFAULT_LNG = 73.8567
 
 def _add_log(state: ConciergeState, message: str) -> list[dict[str, Any]]:
     logs = list(state.get("execution_logs") or [])
-    logs.append({"timestamp": datetime.datetime.utcnow().isoformat(), "message": message})
+    logs.append({"timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(), "message": message})
     return logs
 
 
 async def profile_attendees_node(state: ConciergeState) -> ConciergeState:
     emails = state.get("attendee_emails") or []
-    group_profile = get_group_preferences(emails)
+    group_profile = await asyncio.to_thread(get_group_preferences, emails)
     profile_dict = group_profile.model_dump()
     logs = _add_log(
         state,
@@ -456,7 +457,8 @@ async def hitl_notify_node(state: ConciergeState) -> ConciergeState:
         }
         summary = f"Zero-Touch Host · IM ₹{im:.0f} + Food ₹{food:.0f} (place after approve)"
 
-    approval = create_approval(
+    approval = await asyncio.to_thread(
+        create_approval,
         event_id=event_id,
         thread_id=thread_id,
         trigger_type=state.get("trigger_type") or "calendar_concierge",
@@ -489,7 +491,8 @@ async def hitl_notify_node(state: ConciergeState) -> ConciergeState:
         request_id=request_id,
     )
 
-    record_qol_event(
+    await asyncio.to_thread(
+        record_qol_event,
         kind="hitl_pending",
         title=f"Approval pending · {request_id}",
         detail=summary,
@@ -497,7 +500,8 @@ async def hitl_notify_node(state: ConciergeState) -> ConciergeState:
         meta={"request_id": request_id, "event_id": event_id, "mode": mode},
         event_id=event_id,
     )
-    save_execution(
+    await asyncio.to_thread(
+        save_execution,
         event_id,
         {
             "request_id": request_id,
@@ -616,7 +620,8 @@ async def execute_transactions_node(state: ConciergeState) -> ConciergeState:
         )
         logs = _add_log(state, f"place_food_order OK · {food_order_id}")
         for email in state.get("attendee_emails") or []:
-            record_dish_history(
+            await asyncio.to_thread(
+                record_dish_history,
                 email,
                 (staged_food["cartItems"][0].get("name") or "catering"),
                 staged_food.get("restaurantName") or "Food",
@@ -645,6 +650,7 @@ async def schedule_legs_node(state: ConciergeState) -> ConciergeState:
             "execution_logs": logs,
         }
     except Exception as e:  # noqa: BLE001
+        log.warning("schedule_legs_node warning: %s", e)
         logs = _add_log(state, f"Scheduler note: {e}")
         return {**state, "execution_logs": logs}
 
@@ -653,14 +659,15 @@ async def cleanup_reject_node(state: ConciergeState) -> ConciergeState:
     address_id = state.get("address_id") or DEFAULT_ADDRESS
     try:
         await mcp_client.call_tool_async("food", "flush_food_cart", {"addressId": address_id})
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as e:  # noqa: BLE001
+        log.warning("flush_food_cart during reject failed: %s", e)
     try:
         await mcp_client.call_tool_async("im", "clear_cart", {"selectedAddressId": address_id})
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as e:  # noqa: BLE001
+        log.warning("clear_cart during reject failed: %s", e)
     logs = _add_log(state, "Rejected — flushed food cart & cleared Instamart cart")
-    record_qol_event(
+    await asyncio.to_thread(
+        record_qol_event,
         kind="hitl_rejected",
         title="Plan declined",
         detail=state.get("approval_request_id") or "",
@@ -707,7 +714,8 @@ async def calendar_mutate_node(state: ConciergeState) -> ConciergeState:
         except Exception as e:  # noqa: BLE001
             log.warning("Calendar patch failed: %s", e)
     logs = _add_log(state, "Calendar description write-back complete")
-    save_execution(
+    await asyncio.to_thread(
+        save_execution,
         state.get("event_id") or "unknown",
         {
             "request_id": state.get("approval_request_id"),
@@ -716,7 +724,8 @@ async def calendar_mutate_node(state: ConciergeState) -> ConciergeState:
             "state": dict(state),
         },
     )
-    record_qol_event(
+    await asyncio.to_thread(
+        record_qol_event,
         kind="concierge_complete",
         title=f"Concierge {status}",
         detail=f"{mode} · {state.get('event_title')}",

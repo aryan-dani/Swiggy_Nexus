@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -48,7 +48,7 @@ class WeatherAlert(BaseModel):
     is_raining: bool = False
     is_heavy_rain: bool = False
     condition: str = "Clear"
-    observed_at: datetime = Field(default_factory=datetime.utcnow)
+    observed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class MatchState(BaseModel):
@@ -125,7 +125,7 @@ class ApprovalRequest(BaseModel):
     summary: str = ""
     cost_breakdown: dict[str, Any] = Field(default_factory=dict)
     staged_payload: dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     decided_at: datetime | None = None
 
 
@@ -136,7 +136,7 @@ class QoLEvent(BaseModel):
     detail: str = ""
     severity: Literal["info", "warn", "action"] = "info"
     meta: dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class TelegramCallback(BaseModel):

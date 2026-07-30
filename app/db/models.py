@@ -44,7 +44,7 @@ if HAS_SQLALCHEMY:
         email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
         full_name: Mapped[str] = mapped_column(String(255), nullable=False)
         created_at: Mapped[datetime.datetime] = mapped_column(
-            DateTime, default=datetime.datetime.utcnow
+            DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
         )
 
         dietary_profile: Mapped[Optional["DietaryProfile"]] = relationship(
@@ -71,6 +71,7 @@ if HAS_SQLALCHEMY:
         is_eggetarian: Mapped[bool] = mapped_column(Boolean, default=False)
         is_gluten_free: Mapped[bool] = mapped_column(Boolean, default=False)
         is_jain: Mapped[bool] = mapped_column(Boolean, default=False)
+        is_halal: Mapped[bool] = mapped_column(Boolean, default=False)
 
         spice_tolerance: Mapped[int] = mapped_column(Integer, default=3)
 
@@ -120,6 +121,7 @@ if HAS_SQLALCHEMY:
                 "is_eggetarian": self.is_eggetarian,
                 "is_gluten_free": self.is_gluten_free,
                 "is_jain": self.is_jain,
+                "is_halal": self.is_halal,
                 "spice_tolerance": self.spice_tolerance,
                 "allergies": self.allergies,
                 "fav_cuisines": self.fav_cuisines,
@@ -159,11 +161,10 @@ DB_FILE = Path(__file__).parent.parent.parent / "nexus_memory.db"
 
 def init_db() -> None:
     """Initialize database tables and seed demo users."""
+    _init_db_sqlite()
     if HAS_SQLALCHEMY:
         Base.metadata.create_all(bind=engine)
         seed_demo_users()
-    else:
-        _init_db_sqlite()
 
 
 def _init_db_sqlite() -> None:
@@ -186,6 +187,7 @@ def _init_db_sqlite() -> None:
                 is_eggetarian INTEGER DEFAULT 0,
                 is_gluten_free INTEGER DEFAULT 0,
                 is_jain INTEGER DEFAULT 0,
+                is_halal INTEGER DEFAULT 0,
                 spice_tolerance INTEGER DEFAULT 3,
                 allergies_json TEXT DEFAULT '[]',
                 fav_cuisines_json TEXT DEFAULT '[]',
@@ -193,6 +195,10 @@ def _init_db_sqlite() -> None:
                 FOREIGN KEY(user_id) REFERENCES users(id)
             )
         """)
+        try:
+            conn.execute("ALTER TABLE dietary_profiles ADD COLUMN is_halal INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         
         # Seed users if empty
         cur = conn.cursor()

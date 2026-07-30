@@ -58,21 +58,19 @@ def update_calendar_event_description(calendar_event_id: str, new_description: s
     """Patch the original Google Calendar event description with updated markdown details."""
     service = get_calendar_service()
     if not service:
-        log.info(f"[GOOGLE CALENDAR MOCK] Patched event {calendar_event_id} description successfully.")
+        log.info("[GOOGLE CALENDAR MOCK] Patched event %s description successfully.", calendar_event_id)
         return True
 
     try:
-        event = service.events().get(calendarId=settings.PRIMARY_CALENDAR_ID, eventId=calendar_event_id).execute()
-        event["description"] = new_description
         service.events().patch(
             calendarId=settings.PRIMARY_CALENDAR_ID,
             eventId=calendar_event_id,
-            body=event,
+            body={"description": new_description},
         ).execute()
-        log.info(f"[GOOGLE CALENDAR] Successfully patched event {calendar_event_id} description.")
+        log.info("[GOOGLE CALENDAR] Successfully patched event %s description.", calendar_event_id)
         return True
     except Exception as e:
-        log.error(f"[GOOGLE CALENDAR] Failed to patch event {calendar_event_id}: {e}")
+        log.error("[GOOGLE CALENDAR] Failed to patch event %s: %s", calendar_event_id, e)
         return False
 
 

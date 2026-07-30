@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from mock_data.active_orders import get_im_order, save_im_order
@@ -173,7 +173,7 @@ def handle_checkout(params: dict[str, Any]) -> tuple[bool, dict | None, dict | N
         "eta_mins": eta,
         "subtotal_inr": subtotal,
         "items": line_items,
-        "placed_at": datetime.utcnow().isoformat(),
+        "placed_at": datetime.now(timezone.utc).isoformat(),
         "message": msg,
     }
     save_im_order(data)

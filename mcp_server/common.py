@@ -8,7 +8,13 @@ import time
 from typing import Any
 
 
+import os
+
 def simulated_latency_jitter_ms() -> None:
+    if os.environ.get("MOCK_LATENCY_ENABLED", "1").strip().lower() in ("0", "false", "no"):
+        return
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return
     delay = random.uniform(0.3, 0.8)
     time.sleep(delay)
 

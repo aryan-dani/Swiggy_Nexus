@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Protocol
 
 import httpx
@@ -71,7 +71,7 @@ class OpenWeatherProvider:
                 is_raining=is_raining,
                 is_heavy_rain=rain_mm >= 8.0 or condition.lower() == "thunderstorm",
                 condition=condition,
-                observed_at=datetime.utcnow(),
+                observed_at=datetime.now(timezone.utc),
             )
         except Exception as e:  # noqa: BLE001
             log.warning("OpenWeather failed (%s); scenario fallback", e)

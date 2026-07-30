@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.config import settings
@@ -31,7 +31,7 @@ def _parse_ts(raw: str) -> datetime:
     try:
         return datetime.fromisoformat(str(raw).replace("Z", "+00:00")).replace(tzinfo=None)
     except ValueError:
-        return datetime.utcnow()
+        return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def get_pantry_status(days: int = 60) -> list[dict[str, Any]]:
@@ -43,7 +43,7 @@ def get_pantry_status(days: int = 60) -> list[dict[str, Any]]:
     for row in history:
         by_spin[row["spin_id"]].append(row)
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     out: list[dict[str, Any]] = []
     for spin_id, rows in by_spin.items():
         rows.sort(key=lambda r: r["ordered_at"])
