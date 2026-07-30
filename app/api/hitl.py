@@ -157,11 +157,16 @@ async def process_telegram_update(data: dict[str, Any]) -> dict[str, str]:
         await qol_triggers.check_fuel_guard()
         await _telegram_reply(chat_id, "Fuel guard checked — approval may be pending.")
         return {"ok": "fuel"}
-    if text.startswith("/start") or text.lower() in {"hi", "hello", "/help"}:
+    if text.startswith("/start") or text.startswith("/help"):
+        from app.services.llm import active_provider_label
+
         await _telegram_reply(
             chat_id,
-            "Nexus Concierge HITL bot.\n"
-            "You'll get Approve/Reject when a flow pauses.\n"
+            "Swiggy Nexus concierge.\n"
+            "Just talk to me normally — 'order paneer biryani', 'book a table for 4 "
+            "tonight', 'get milk and bread'. Voice notes work too.\n"
+            "I stage everything and wait for your Approve tap before spending.\n"
+            f"Brain: {active_provider_label()}\n"
             "Commands: /status · /guests 6 · /fuel · /approve REQ-… · /reject REQ-…",
         )
         return {"ok": "help"}
@@ -188,6 +193,29 @@ async def process_telegram_update(data: dict[str, Any]) -> dict[str, str]:
             result = await _process_decision(parts[1], False)
             await _telegram_reply(chat_id, f"🚫 {parts[1]} → {result.get('status')}")
         return {"ok": "reject"}
+
+    # Voice note → transcript → same agent loop.
+    voice = message.get("voice") or message.get("audio") or {}
+    if voice.get("file_id") and chat_id:
+        from app.services.telegram_agent import run_telegram_agent
+        from app.services.voice import transcribe_telegram_voice
+
+        transcript = await transcribe_telegram_voice(voice["file_id"])
+        if not transcript:
+            await _telegram_reply(
+                chat_id, "Couldn't transcribe that voice note — try again or type it."
+            )
+            return {"ok": "voice_failed"}
+        await _telegram_reply(chat_id, f'🎙 "{transcript}"')
+        await run_telegram_agent(chat_id, transcript, source="voice")
+        return {"ok": "voice"}
+
+    # Anything else that is not a slash command goes to the LLM agent.
+    if text and chat_id and not text.startswith("/"):
+        from app.services.telegram_agent import run_telegram_agent
+
+        await run_telegram_agent(chat_id, text)
+        return {"ok": "agent"}
 
     cq = data.get("callback_query") or {}
     cb = cq.get("data") or ""

@@ -27,6 +27,17 @@ def _flatten_menu_prices(restaurant_id: str) -> dict[str, int]:
     return out
 
 
+def _flatten_menu_names(restaurant_id: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    blob = MENU_BY_RESTAURANT.get(restaurant_id)
+    if not blob:
+        return out
+    for cat in blob.get("categories", []):
+        for it in cat.get("items", []):
+            out[str(it["item_id"])] = str(it.get("name") or it["item_id"])
+    return out
+
+
 def _restaurant_row(r: dict) -> dict[str, Any]:
     eta = pick_eta(r)
     rid = r["restaurant_id"]
@@ -126,6 +137,7 @@ def handle_add_to_cart(params: dict[str, Any]) -> tuple[bool, dict | None, dict 
         flush_msg = f"Previous cart from another restaurant was cleared."
 
     prices = _flatten_menu_prices(rid)
+    names = _flatten_menu_names(rid)
     lines_out: list[dict[str, Any]] = []
     subtotal = 0
     for row in raw_lines:
@@ -141,6 +153,7 @@ def handle_add_to_cart(params: dict[str, Any]) -> tuple[bool, dict | None, dict 
         lines_out.append({
             "item_id": item_id,
             "itemId": item_id,
+            "name": names.get(item_id, item_id),
             "qty": qty,
             "quantity": qty,
             "unit_price_inr": unit,

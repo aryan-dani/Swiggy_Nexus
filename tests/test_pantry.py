@@ -63,6 +63,29 @@ def test_pantry_refill_creates_hitl_approval_and_executes():
     assert get_approval(rid)["status"] == "APPROVED"
 
 
+def test_reseed_restores_believable_cadence():
+    """Demo runs pollute cadence; reseeding must restore the household baseline."""
+    from mcp_server.order_history import reseed_demo_history
+
+    # Pollute: same SKU many times in quick succession
+    for i in range(8):
+        record_im_order(
+            f"IM_NOISE_{i}",
+            [{"spinId": "spin_cola_2l", "name": "Coca-Cola", "quantity": 1, "unit_price_inr": 90}],
+        )
+    noisy = {s["spinId"]: s for s in get_pantry_status()}
+    assert "spin_cola_2l" in noisy
+
+    rows = reseed_demo_history()
+    assert rows > 0
+
+    clean = {s["spinId"]: s for s in get_pantry_status()}
+    assert "spin_cola_2l" not in clean, "noise should be gone"
+    milk = clean["spin_milk_1l"]
+    assert 2.0 <= milk["avg_interval_days"] <= 4.0
+    assert clean["spin_dal_1kg"]["avg_interval_days"] >= 10.0
+
+
 def test_pantry_endpoints():
     res = client.get("/api/concierge/pantry")
     assert res.status_code == 200

@@ -39,6 +39,13 @@ def get_booking(booking_id: str) -> dict[str, Any] | None:
     return _bookings.get(booking_id)
 
 
+def reset_all_orders() -> None:
+    """Clear in-memory orders and bookings (demo reset)."""
+    _food_orders.clear()
+    _im_orders.clear()
+    _bookings.clear()
+
+
 def list_food_orders() -> list[dict[str, Any]]:
     return list(_food_orders.values())
 

@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = Field(default="")
     GROQ_MODEL: str = Field(default="llama-3.3-70b-versatile")
 
+    # Conversational agent brain. "auto" prefers Gemini and falls back to Groq.
+    LLM_PROVIDER: Literal["auto", "gemini", "groq"] = Field(default="auto")
+    GEMINI_API_KEY: str = Field(default="")
+    GEMINI_MODEL: str = Field(default="gemini-2.5-flash")
+
     DATABASE_URL: str = Field(default="sqlite:///./nexus_memory.db")
 
     USE_MOCK_MCP: bool = Field(default=True)

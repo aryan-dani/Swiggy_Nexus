@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -105,7 +105,7 @@ def create_approval(
     request_id: str | None = None,
 ) -> dict[str, Any]:
     rid = request_id or f"REQ-{uuid.uuid4().hex[:8].upper()}"
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     row = {
         "request_id": rid,
         "event_id": event_id,
@@ -173,7 +173,7 @@ def list_approvals(status: str | None = "PENDING", limit: int = 50) -> list[dict
 
 def decide_approval(request_id: str, approved: bool) -> dict[str, Any] | None:
     status = "APPROVED" if approved else "REJECTED"
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     with _connect() as conn:
         conn.execute(
             """
@@ -213,7 +213,7 @@ def record_qol_event(
     event_id: str | None = None,
 ) -> dict[str, Any]:
     eid = event_id or f"qol-{uuid.uuid4().hex[:10]}"
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     with _connect() as conn:
         conn.execute(
             """
@@ -256,7 +256,7 @@ def list_qol_events(limit: int = 40) -> list[dict[str, Any]]:
 
 def claim_idempotency(key: str, note: str = "") -> bool:
     """Return True if this is the first time we see the key."""
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     try:
         with _connect() as conn:
             conn.execute(
@@ -270,7 +270,7 @@ def claim_idempotency(key: str, note: str = "") -> bool:
 
 
 def save_execution(event_id: str, payload: dict[str, Any]) -> None:
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     with _connect() as conn:
         conn.execute(
             """
@@ -322,7 +322,7 @@ def record_dish_history(
     rating: int = 5,
     vertical: str = "food",
 ) -> None:
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     with _connect() as conn:
         conn.execute(
             """
@@ -366,6 +366,52 @@ def upsert_watch_channel(
             ),
         )
         conn.commit()
+
+
+def reset_demo_state() -> dict[str, Any]:
+    """Clear everything a recording take can dirty: approvals, timeline, idempotency
+    keys, execution snapshots, MCP carts, and Telegram chat history."""
+    init_durable_tables()
+    cleared: dict[str, Any] = {}
+    with _connect() as conn:
+        for table in (
+            "approval_requests",
+            "qol_events",
+            "idempotency_keys",
+            "concierge_executions",
+        ):
+            cur = conn.execute(f"DELETE FROM {table}")  # noqa: S608 — fixed table names
+            cleared[table] = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+        conn.commit()
+
+    # In-memory MCP carts / orders
+    try:
+        from mcp_server.session_store import reset_all_sessions
+
+        cleared["mcp_sessions"] = reset_all_sessions()
+    except Exception as e:  # noqa: BLE001
+        cleared["mcp_sessions_error"] = str(e)
+
+    # Restore the believable pantry baseline (demo runs pollute reorder cadence)
+    try:
+        from mcp_server.order_history import reseed_demo_history
+
+        cleared["pantry_history_rows"] = reseed_demo_history()
+    except Exception as e:  # noqa: BLE001
+        cleared["pantry_history_error"] = str(e)
+
+    # Telegram conversation memory (separate SQLite file)
+    try:
+        from backend.memory import clear_conversation_history, list_sessions
+
+        telegram_sessions = [s for s in list_sessions() if s.startswith("tg:")]
+        for session_id in telegram_sessions:
+            clear_conversation_history(session_id)
+        cleared["telegram_sessions"] = len(telegram_sessions)
+    except Exception as e:  # noqa: BLE001
+        cleared["telegram_sessions_error"] = str(e)
+
+    return {"status": "reset", "cleared": cleared}
 
 
 # Initialize on import

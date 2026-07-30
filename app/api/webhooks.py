@@ -19,6 +19,7 @@ from app.db.store import (
     list_approvals,
     list_qol_events,
     record_qol_event,
+    reset_demo_state,
     save_execution,
 )
 from app.graph.workflow import concierge_graph
@@ -243,6 +244,23 @@ async def simulate_fuel() -> dict[str, Any]:
     return {"trigger": fired}
 
 
+@router.get("/api/concierge/agent")
+def concierge_agent() -> dict[str, Any]:
+    """Which brain is driving the Telegram agent, and what it may never execute alone."""
+    from app.services.llm import active_provider_label, _resolve_provider
+    from app.services.telegram_agent import WRITE_TOOLS
+
+    provider, model = _resolve_provider()
+    return {
+        "provider": provider,
+        "model": model,
+        "label": active_provider_label(),
+        "configured": provider != "none",
+        "telegram_ready": bool(settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_CHAT_ID),
+        "hitl_gated_tools": sorted(WRITE_TOOLS),
+    }
+
+
 @router.get("/api/concierge/pantry")
 def concierge_pantry() -> dict[str, Any]:
     """Pantry radar — per-SKU depletion predictions from Instamart history."""
@@ -274,6 +292,70 @@ async def concierge_split(body: SplitBody) -> dict[str, Any]:
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+class CalendarReplayBody(BaseModel):
+    """A Google Calendar event as Google itself would hand it to us."""
+
+    summary: str = "Team Friday Night Social #swiggy"
+    description: str = "Weekly team catchup and dinner #swiggy"
+    location: str = "Home"
+    start_time: str | None = None
+    attendee_emails: list[str] = ["dani@nexus.ai", "priya@nexus.ai", "alex@nexus.ai"]
+    event_id: str | None = None
+
+
+@router.post("/api/concierge/simulate/calendar")
+async def simulate_calendar(
+    body: CalendarReplayBody, background_tasks: BackgroundTasks
+) -> dict[str, Any]:
+    """Replay a calendar push without Google.
+
+    The live `/webhooks/calendar` path needs a public BASE_URL plus a real event that
+    `fetch_calendar_event` can load. This endpoint runs the identical gate and graph on a
+    supplied payload, so the calendar story is recordable with or without ngrok. Each call
+    mints a fresh event id so repeated takes are never swallowed by the idempotency key.
+    """
+    blob = f"{body.description} {body.summary}".lower()
+    if "#swiggy" not in blob and "#host" not in blob:
+        return {"status": "ignored", "reason": "missing #swiggy/#host"}
+
+    event_id = body.event_id or f"cal_{uuid.uuid4().hex[:10]}"
+    if not claim_idempotency(f"{event_id}:replay", note="calendar_replay"):
+        return {"status": "ignored", "reason": "duplicate"}
+
+    initial_state = {
+        "event_id": event_id,
+        "event_title": body.summary,
+        "event_time_str": body.start_time or "Today 19:00",
+        "event_location": body.location,
+        "event_description": body.description,
+        "attendee_emails": body.attendee_emails,
+        "calendar_event_id": event_id,
+        "trigger_type": "calendar_concierge",
+        "execution_logs": [],
+        "errors": [],
+    }
+    record_qol_event(
+        kind="calendar_push",
+        title=f"Calendar event received · {body.summary}",
+        detail=f"{body.location} · {len(body.attendee_emails)} attendees",
+        severity="action",
+        event_id=event_id,
+        meta={"replay": True},
+    )
+    background_tasks.add_task(_run_graph_execution, initial_state)
+    return {"status": "accepted", "event_id": event_id, "source": "replay"}
+
+
+@router.post("/internal/demo/reset")
+def demo_reset(
+    x_nexus_tick_secret: str | None = Header(None, alias="X-Nexus-Tick-Secret"),
+) -> dict[str, Any]:
+    """Wipe demo state so every recording take starts clean."""
+    if x_nexus_tick_secret != settings.INTERNAL_TICK_SECRET:
+        raise HTTPException(status_code=401, detail="Invalid tick secret")
+    return reset_demo_state()
 
 
 @router.post("/internal/tick")

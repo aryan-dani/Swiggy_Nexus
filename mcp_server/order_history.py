@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -50,7 +50,7 @@ def record_im_order(
     if not items:
         return
     init_history_table()
-    ts = ordered_at or datetime.utcnow().isoformat()
+    ts = ordered_at or datetime.now(timezone.utc).isoformat()
     rows = []
     for it in items:
         spin = str(it.get("spinId") or it.get("spin_id") or "").strip()
@@ -79,7 +79,7 @@ def record_im_order(
 
 def list_im_history(days: int = 60) -> list[dict[str, Any]]:
     init_history_table()
-    cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     with _connect() as conn:
         rows = conn.execute(
             "SELECT order_id, spin_id, name, quantity, unit_price_inr, ordered_at"
@@ -109,15 +109,37 @@ _SEED_PLAN: list[tuple[str, str, int, int, float]] = [
 ]
 
 
+def clear_history() -> int:
+    """Drop all recorded Instamart history. Returns rows removed."""
+    init_history_table()
+    with _connect() as conn:
+        cur = conn.execute("DELETE FROM im_order_history")
+        conn.commit()
+        return cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+
+
+def reseed_demo_history(days: int = 32) -> int:
+    """Reset to the believable household baseline (used before recording a demo).
+
+    Demo runs and tests append real checkouts, which quickly turns the pantry radar
+    into nonsense like "Coca-Cola every 0.1 days". This restores the clean pattern.
+    """
+    clear_history()
+    seed_synthetic_history_if_empty(days=days)
+    return len(list_im_history(days=days + 5))
+
+
 def seed_synthetic_history_if_empty(days: int = 32) -> bool:
     """Populate im_order_history with a month of periodic staple orders. Returns True if seeded."""
     if not history_is_empty():
         return False
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     with _connect() as conn:
         for spin_id, name, price, qty, interval in _SEED_PLAN:
             t = now - timedelta(days=days)
             i = 0
+            # Stop generating seed entries when within 0.4 intervals of 'now'
+            # to ensure items show up as running low (days_left <= threshold) for demo predictability.
             while t <= now - timedelta(days=interval * 0.4):
                 oid = f"IM_SEED_{spin_id[-6:]}_{i}"
                 conn.execute(

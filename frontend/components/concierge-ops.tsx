@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  CalendarClock,
   Check,
   CloudRain,
   IndianRupee,
@@ -43,6 +44,15 @@ type TimelineItem = {
   detail: string;
   severity: string;
   created_at: string;
+};
+
+type AgentInfo = {
+  provider: string;
+  model: string;
+  label: string;
+  configured: boolean;
+  telegram_ready: boolean;
+  hitl_gated_tools: string[];
 };
 
 type PantryItem = {
@@ -107,6 +117,7 @@ const PHASE_COPY: Record<DemoPhase, { label: string; blurb: string; tone: string
 
 const TRIGGER_CHIP: Record<string, string> = {
   calendar_concierge: "bg-violet-100 text-violet-900 border-violet-300",
+  voice_order: "bg-cyan-100 text-cyan-900 border-cyan-300",
   guest_sos: "bg-amber-100 text-amber-900 border-amber-300",
   pantry_refill: "bg-emerald-100 text-emerald-900 border-emerald-300",
   rooftop_rescue: "bg-sky-100 text-sky-900 border-sky-300",
@@ -119,6 +130,11 @@ const KIND_ICON: Record<string, string> = {
   hitl_approved: "✅",
   hitl_rejected: "🚫",
   hitl_pending: "⏸",
+  agent_tool: "🔧",
+  agent_staged: "⏸",
+  agent_reply: "💬",
+  agent_error: "⚠️",
+  calendar_push: "📅",
   guest_sos: "🛎",
   pantry_refill: "🥛",
   bill_split: "🧾",
@@ -191,6 +207,8 @@ export function ConciergeOps({ className }: { className?: string }) {
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [pantryItems, setPantryItems] = useState<PantryItem[]>([]);
   const [weather, setWeather] = useState<Record<string, unknown> | null>(null);
+  const [agent, setAgent] = useState<AgentInfo | null>(null);
+  const [agentOnly, setAgentOnly] = useState(false);
   const [guestCount, setGuestCount] = useState(6);
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<DemoPhase>("idle");
@@ -200,16 +218,18 @@ export function ConciergeOps({ className }: { className?: string }) {
 
   const refresh = useCallback(async () => {
     try {
-      const [a, t, w, p] = await Promise.all([
+      const [a, t, w, p, g] = await Promise.all([
         fetch(apiUrl("/api/concierge/approvals")).then((r) => r.json()),
         fetch(apiUrl("/api/concierge/timeline")).then((r) => r.json()),
         fetch(apiUrl("/api/concierge/weather")).then((r) => r.json()),
         fetch(apiUrl("/api/concierge/pantry")).then((r) => r.json()),
+        fetch(apiUrl("/api/concierge/agent")).then((r) => r.json()),
       ]);
       setApprovals(a.items || []);
       setTimeline(t.items || []);
       setWeather(w);
       setPantryItems(p.items || []);
+      setAgent(g);
     } catch {
       /* backend offline — keep last */
     }
@@ -282,6 +302,34 @@ export function ConciergeOps({ className }: { className?: string }) {
     }
   };
 
+  /** Replays a real Google Calendar payload — same gate + graph, no ngrok needed. */
+  const pushCalendarEvent = async () => {
+    setLastAction("Calendar push (#host)");
+    setLastResult("");
+    setPhase("staging");
+    nexusToast("Calendar event received — staging in background");
+    try {
+      const json = await post("/api/concierge/simulate/calendar", {
+        summary: "Housewarming with the team #host #swiggy",
+        description: "Hosting 8 people at home. Snacks + dinner please #host #swiggy",
+        location: "Home",
+        start_time: "Today 20:00",
+        attendee_emails: ["dani@nexus.ai", "priya@nexus.ai", "alex@nexus.ai"],
+      });
+      if (json?.status !== "accepted") {
+        setPhase("error");
+        setLastResult(String(json?.reason || "ignored"));
+        return;
+      }
+      setPhase("awaiting_hitl");
+      setLastResult(
+        `Calendar event ${json.event_id} accepted — graph is staging, approval lands in a moment`
+      );
+    } catch {
+      /* phase already error */
+    }
+  };
+
   const decide = async (requestId: string, approved: boolean) => {
     setLastRequestId(requestId);
     setPhase("executing");
@@ -333,6 +381,10 @@ export function ConciergeOps({ className }: { className?: string }) {
 
   const phaseUi = PHASE_COPY[phase];
   const lowCount = useMemo(() => pantryItems.filter((p) => p.low).length, [pantryItems]);
+  const visibleTimeline = useMemo(
+    () => (agentOnly ? timeline.filter((t) => t.kind.startsWith("agent")) : timeline),
+    [timeline, agentOnly]
+  );
 
   return (
     <motion.div
@@ -346,6 +398,38 @@ export function ConciergeOps({ className }: { className?: string }) {
         <p className="mt-1 font-mono text-xs text-white/85">
           Demo script: Trigger → stage (read tools) → Approve → write tools. Mock MCP only.
         </p>
+        {agent && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <span
+              className={cn(
+                "rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold",
+                agent.configured
+                  ? "border-white/40 bg-white/15 text-white"
+                  : "border-red-300 bg-red-500/30 text-white"
+              )}
+              title="LLM driving the Telegram agent"
+            >
+              🧠 {agent.label}
+            </span>
+            <span
+              className={cn(
+                "rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold",
+                agent.telegram_ready
+                  ? "border-white/40 bg-white/15 text-white"
+                  : "border-white/30 bg-black/20 text-white/70"
+              )}
+              title="Telegram bot token + chat id configured"
+            >
+              {agent.telegram_ready ? "Telegram live" : "Telegram off"}
+            </span>
+            <span
+              className="rounded-full border border-white/40 bg-white/15 px-2 py-0.5 font-mono text-[10px] font-bold"
+              title={agent.hitl_gated_tools.join(", ")}
+            >
+              {agent.hitl_gated_tools.length} tools HITL-gated
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Live demo banner */}
@@ -422,6 +506,15 @@ export function ConciergeOps({ className }: { className?: string }) {
             className="rounded border-2 border-black bg-indigo-100 px-3 py-2 font-display text-[10px] font-black uppercase shadow-[3px_3px_0_0_#000] disabled:opacity-50"
           >
             {busy && lastAction.includes("Dineout") ? "Staging…" : "Trigger Dineout"}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void pushCalendarEvent()}
+            title="Replays the exact payload Google pushes to /webhooks/calendar"
+            className="flex items-center gap-1 rounded border-2 border-black bg-violet-100 px-3 py-2 font-display text-[10px] font-black uppercase shadow-[3px_3px_0_0_#000] disabled:opacity-50"
+          >
+            <CalendarClock className="h-3.5 w-3.5" /> Push calendar event
           </button>
         </div>
 
@@ -639,13 +732,41 @@ export function ConciergeOps({ className }: { className?: string }) {
 
       {/* Zone: Timeline */}
       <section className="rounded-lg border border-black/20 bg-slate-900 p-3 text-white">
-        <h3 className="mb-2 flex items-center gap-2 font-display text-xs font-black uppercase tracking-widest text-emerald-300">
-          <IndianRupee className="h-3.5 w-3.5" aria-hidden />
-          QoL timeline
-        </h3>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="flex items-center gap-2 font-display text-xs font-black uppercase tracking-widest text-emerald-300">
+            <IndianRupee className="h-3.5 w-3.5" aria-hidden />
+            QoL timeline
+          </h3>
+          <div className="flex items-center gap-1">
+            {(
+              [
+                [false, "All"],
+                [true, "Agent activity"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setAgentOnly(value)}
+                className={cn(
+                  "rounded-full border px-2 py-0.5 font-mono text-[9px] font-bold uppercase",
+                  agentOnly === value
+                    ? "border-emerald-400 bg-emerald-400/20 text-emerald-200"
+                    : "border-white/20 text-slate-400 hover:text-white"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
         <ul className="max-h-56 space-y-1 overflow-y-auto pr-1 font-mono text-[10px]">
-          {timeline.length === 0 && <li className="text-slate-500">No events yet.</li>}
-          {timeline.map((t) => (
+          {visibleTimeline.length === 0 && (
+            <li className="text-slate-500">
+              {agentOnly ? "No agent activity yet — message the bot." : "No events yet."}
+            </li>
+          )}
+          {visibleTimeline.map((t) => (
             <li
               key={`${t.event_id}-${t.created_at}`}
               className={cn(

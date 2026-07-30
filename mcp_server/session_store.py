@@ -85,6 +85,19 @@ def clear_im_cart(session_id: str) -> None:
     s.im = ImCart()
 
 
+def reset_all_sessions() -> int:
+    """Drop every session's carts — used by the demo reset endpoint. Returns count."""
+    count = len(_sessions)
+    _sessions.clear()
+    try:
+        from mock_data.active_orders import reset_all_orders
+
+        reset_all_orders()
+    except Exception:  # noqa: BLE001
+        pass
+    return count
+
+
 def list_sessions() -> list[dict[str, Any]]:
     """Return debug info for all active sessions."""
     return [
