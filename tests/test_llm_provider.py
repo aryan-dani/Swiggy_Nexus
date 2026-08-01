@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from app.services import llm as llm_mod
-from backend.tool_schemas import TOOLS, get_tool_names
+from backend.tool_schemas import TOOLS, TOOLS_FOR_LLM, get_tool_names
 
 
 def _run(coro):
@@ -16,13 +16,19 @@ def _run(coro):
 
 
 def test_shared_tool_list_is_single_source():
-    """The SSE orchestrator and the async agent must use the same schemas."""
+    """Orchestrator and async agent both use compact LLM schemas with the same 23 names."""
     from backend.llm_orchestrator import TOOLS as ORCH_TOOLS
 
-    assert ORCH_TOOLS is TOOLS
+    assert ORCH_TOOLS is TOOLS_FOR_LLM
     assert len(get_tool_names()) == 23
     assert "im_get_orders" in get_tool_names()
-
+    full_names = {t["function"]["name"] for t in TOOLS}
+    llm_names = {t["function"]["name"] for t in TOOLS_FOR_LLM}
+    assert full_names == llm_names
+    # Compact descriptions are shorter than the full schemas.
+    full_desc = TOOLS[0]["function"]["description"]
+    compact_desc = TOOLS_FOR_LLM[0]["function"]["description"]
+    assert len(compact_desc) <= len(full_desc)
 
 def test_provider_resolution(monkeypatch: pytest.MonkeyPatch):
     s = llm_mod.settings
@@ -63,14 +69,15 @@ def test_gemini_declarations_cover_every_tool():
     """Every OpenAI-style schema converts to a Gemini FunctionDeclaration."""
     types = pytest.importorskip("google.genai.types")
     decls = llm_mod._gemini_declarations(types)
-    assert len(decls) == len(TOOLS)
+    assert len(decls) == len(TOOLS_FOR_LLM)
     names = {d.name for d in decls}
     assert names == set(get_tool_names())
 
 
 def test_gemini_model_chain_dedupes_preferred():
     assert llm_mod._gemini_model_chain("gemini-3.6-flash")[0] == "gemini-3.6-flash"
-    assert "gemini-3.5-flash-lite" in llm_mod._gemini_model_chain("gemini-3.6-flash")
+    assert llm_mod._gemini_model_chain("gemini-3.5-flash-lite")[0] == "gemini-3.5-flash-lite"
+    assert "gemini-3.1-flash-lite" in llm_mod._gemini_model_chain("gemini-3.5-flash-lite")
     assert llm_mod._is_model_unavailable(
         RuntimeError("404 NOT_FOUND. This model models/gemini-2.5-flash is no longer available")
     )
@@ -107,7 +114,7 @@ def test_gemini_model_404_tries_next_before_groq(monkeypatch: pytest.MonkeyPatch
     )
     assert tried[0] == "gemini-2.5-flash"
     assert result.provider == "gemini"
-    assert result.model == "gemini-3.6-flash"
+    assert result.model == "gemini-3.5-flash-lite"
 
 
 def test_gemini_failure_falls_back_to_groq(monkeypatch: pytest.MonkeyPatch):
@@ -166,6 +173,24 @@ def test_truncate_keeps_payloads_small():
     small = {"ok": True}
     assert llm_mod._truncate_for_model(small) == small
 
+
+def test_truncate_caps_search_lists():
+    payload = {
+        "items": [
+            {
+                "itemId": f"i{i}",
+                "name": f"Dish {i}",
+                "price_inr": 100 + i,
+                "extra_blob": "z" * 200,
+            }
+            for i in range(20)
+        ]
+    }
+    out = llm_mod._truncate_for_model(payload)
+    assert len(out["items"]) == 5
+    assert out["items_truncated"] == 15
+    assert "extra_blob" not in out["items"][0]
+    assert "itemId" in out["items"][0]
 
 def test_wrap_result_always_object():
     assert llm_mod._wrap_result({"a": 1}) == {"a": 1}

@@ -472,6 +472,37 @@ _DINEOUT_TOOLS: list[dict[str, Any]] = [
 
 TOOLS: list[dict[str, Any]] = [*_FOOD_TOOLS, *_IM_TOOLS, *_DINEOUT_TOOLS]
 
+
+def _short_desc(text: str, limit: int = 90) -> str:
+    first = (text or "").split(".")[0].strip()
+    if not first:
+        return ""
+    if len(first) <= limit:
+        return first
+    return first[: limit - 1].rstrip() + "…"
+
+
+def _tools_for_llm(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Same names + parameters as TOOLS, with short descriptions to cut prompt tokens."""
+    import copy
+
+    out: list[dict[str, Any]] = []
+    for tool in tools:
+        t = copy.deepcopy(tool)
+        fn = t.get("function") or {}
+        fn["description"] = _short_desc(str(fn.get("description") or fn.get("name") or ""))
+        params = fn.get("parameters") or {}
+        props = params.get("properties") or {}
+        for prop in props.values():
+            if isinstance(prop, dict) and "description" in prop:
+                prop["description"] = _short_desc(str(prop["description"]), limit=60)
+        out.append(t)
+    return out
+
+
+# LLM-facing schemas (Telegram + web chat). Full TOOLS stay for docs / introspection.
+TOOLS_FOR_LLM: list[dict[str, Any]] = _tools_for_llm(TOOLS)
+
 _VERTICAL_MAP: dict[str, list[dict[str, Any]]] = {
     "food": _FOOD_TOOLS,
     "im": _IM_TOOLS,

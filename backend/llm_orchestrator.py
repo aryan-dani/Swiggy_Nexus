@@ -16,14 +16,14 @@ from backend.memory import get_user_preferences
 
 # Tool schemas live in backend/tool_schemas.py — one source of truth shared by
 # this SSE orchestrator and the async Telegram agent in app/services/llm.py.
-from backend.tool_schemas import TOOLS
+from backend.tool_schemas import TOOLS_FOR_LLM as TOOLS
 
 log = logging.getLogger(__name__)
 
 _GEMINI_MODEL_CANDIDATES = (
-    "gemini-3.6-flash",
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
+    "gemini-3.6-flash",
 )
 
 
@@ -59,7 +59,7 @@ SCENARIO_PROMPTS: dict[str, str] = {
 def _env_keys() -> tuple[str, str, str, str]:
     """Return (gemini_key, gemini_model, groq_key, groq_model) from env + app settings."""
     gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    gemini_model = os.environ.get("GEMINI_MODEL", "").strip() or "gemini-3.6-flash"
+    gemini_model = os.environ.get("GEMINI_MODEL", "").strip() or "gemini-3.5-flash-lite"
     groq_key = os.environ.get("GROQ_API_KEY", "").strip()
     groq_model = os.environ.get("GROQ_MODEL", "").strip() or "llama-3.3-70b-versatile"
     try:
@@ -101,37 +101,14 @@ def _is_model_unavailable(exc: BaseException) -> bool:
 
 def _build_system_prompt(prefs_str: str, scenario_hint: str) -> str:
     return (
-        "You are Swiggy Nexus, an autonomous agentic copilot for Swiggy's three verticals: "
-        "Food delivery, Instamart groceries, and Dineout table reservations.\n\n"
-        f"User Preferences: {prefs_str}{scenario_hint}\n\n"
-        "## Core rules\n"
-        "1. ALWAYS start by resolving location: call food_get_addresses (Food/Instamart) or "
-        "dineout_get_saved_locations (Dineout) before any search.\n"
-        "2. For dish-name food orders prefer food_search_menu first, then food_add_to_cart with "
-        "real itemIds, then confirm before food_place_order. For restaurant-name flows: "
-        "search_restaurants → get_menu → add_to_cart → get_food_cart → confirm → place_order.\n"
-        "3. For grocery orders: search_products → add_to_cart → get_cart → confirm → checkout\n"
-        "4. For Dineout: get_saved_locations → search_restaurants → get_restaurant_details → "
-        "check_availability → confirm slot + party size → book_table\n"
-        "5. NEVER auto-place an order. ALWAYS get explicit user confirmation (yes/confirm/proceed) "
-        "before calling place_order or checkout.\n"
-        "6. CART CAP: Cart total must be under ₹1000 (beta restriction). If cart >= ₹1000, "
-        "tell user to use the Swiggy app instead.\n"
-        "7. PAYMENT: COD only in v1. Do NOT mention online payment options.\n"
-        "8. CART + RESTAURANT SWITCH: Warn the user that switching restaurants will clear their cart.\n"
-        "9. COUPON NOTE: A coupon is only 'applied' if coupon_discount > 0. Never say a coupon "
-        "saved money unless the discount amount is > 0.\n"
-        "10. AVAILABILITY: Only recommend restaurants with availabilityStatus='OPEN' (Food) or "
-        "availability='AVAILABLE' (Dineout).\n"
-        "11. Always call food_get_food_cart after every food_add_to_cart — the cart widget is "
-        "NOT updated otherwise.\n"
-        "12. For multi-vertical requests (e.g. dinner out + dessert delivered), use parallel "
-        "tool calls in a single turn.\n"
-        "13. CANCELLATION: If user asks to cancel an order, tell them to call Swiggy customer "
-        "care at 080-67466729. Do NOT call any cancel tool.\n"
-        "14. Stream tool calls visibly. Prefer several MCP tool calls over a brief reply.\n"
-        "15. For Instamart quick reorders, offer im_your_go_to_items before search.\n"
-        "16. NEVER invent IDs — copy restaurantId / itemId / spinId from tool results only.\n"
+        "You are Swiggy Nexus — Food, Instamart, and Dineout via MCP tools.\n"
+        f"Prefs: {prefs_str}{scenario_hint}\n"
+        "Rules: never invent IDs; copy restaurantId/itemId/spinId from tool results. "
+        "Dish orders → food_search_menu then add_to_cart. "
+        "Never place_order/checkout/book_table without explicit user confirm. "
+        "Food cart < ₹1000; Instamart min ₹99; COD only. "
+        "OPEN/AVAILABLE venues only. After food_add_to_cart call food_get_food_cart once. "
+        "Cancel → tell user to call 080-67466729. Prefer tool calls over chatter."
     )
 
 
@@ -394,7 +371,12 @@ def _run_gemini_loop(
     from google import genai
     from google.genai import types
 
-    from app.services.llm import _gemini_declarations, _truncate_for_model, _wrap_result
+    from app.services.llm import (
+        _gemini_declarations,
+        _thinking_config,
+        _truncate_for_model,
+        _wrap_result,
+    )
 
     client = genai.Client(api_key=api_key)
     declarations = _gemini_declarations(types)
@@ -405,18 +387,16 @@ def _run_gemini_loop(
         "payload": {"text": f"Gemini {model} · agentic MCP tool loop"},
     }
 
-    def _config(with_tools: bool = True, no_thinking: bool = False) -> Any:
-        kwargs: dict[str, Any] = {"system_instruction": system_prompt}
+    def _config(with_tools: bool = True) -> Any:
+        kwargs: dict[str, Any] = {
+            "system_instruction": system_prompt,
+            "thinking_config": _thinking_config(types),
+        }
         if with_tools:
             kwargs["tools"] = [types.Tool(function_declarations=declarations)]
             kwargs["automatic_function_calling"] = types.AutomaticFunctionCallingConfig(
                 disable=True
             )
-        if no_thinking:
-            try:
-                kwargs["thinking_config"] = types.ThinkingConfig(thinking_level="minimal")
-            except (TypeError, ValueError):
-                kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
         return types.GenerateContentConfig(**kwargs)
 
     contents: list[Any] = [
@@ -431,12 +411,11 @@ def _run_gemini_loop(
             seen_feed_keys.add(key)
             feed_items.append(item)
 
-    max_rounds = 8
+    max_rounds = 6
     for round_index in range(max_rounds):
         resp = client.models.generate_content(
             model=model, contents=contents, config=_config()
         )
-        # Malformed / empty → one retry with minimal thinking
         try:
             candidates = resp.candidates or []
             reason = str(getattr(candidates[0], "finish_reason", "") or "") if candidates else ""
@@ -448,7 +427,7 @@ def _run_gemini_loop(
             malformed = True
         if malformed:
             resp = client.models.generate_content(
-                model=model, contents=contents, config=_config(no_thinking=True)
+                model=model, contents=contents, config=_config()
             )
 
         calls = list(resp.function_calls or [])

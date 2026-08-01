@@ -30,6 +30,9 @@ npm start
 curl.exe -X POST http://127.0.0.1:8000/internal/demo/reset -H "X-Nexus-Tick-Secret: nexus-tick-secret"
 ```
 
+Confirm `backend/.env` has `GEMINI_MODEL=gemini-3.5-flash-lite` (saves quota vs 3.6).  
+Check http://127.0.0.1:8000/api/concierge/agent → Gemini + `telegram_ready: true`.
+
 4. Open http://127.0.0.1:3000  
 5. Sidebar: turn **Developer mode OFF**  
 6. Stay on **Chat** (not Concierge yet)  

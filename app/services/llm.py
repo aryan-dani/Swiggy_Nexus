@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
 from app.config import settings
-from backend.tool_schemas import TOOLS
+from backend.tool_schemas import TOOLS_FOR_LLM
 
 log = logging.getLogger(__name__)
 
@@ -27,11 +27,29 @@ ToolObserver = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 HALT_KEY = "__halt__"
 
-# Tried in order when the configured model 404s (new keys cannot use 2.5-flash).
+# Prefer cheap Flash-Lite; escalate only if a model is unavailable to this key.
 _GEMINI_MODEL_CANDIDATES = (
-    "gemini-3.6-flash",
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
+    "gemini-3.6-flash",
+)
+
+_LIST_KEYS = ("restaurants", "items", "products", "coupons", "addresses", "venues")
+_SLIM_FIELDS = (
+    "id",
+    "itemId",
+    "item_id",
+    "restaurantId",
+    "restaurant_id",
+    "product_id",
+    "name",
+    "price_inr",
+    "rating",
+    "vegetarian",
+    "spinId",
+    "availabilityStatus",
+    "availability",
+    "eta_mins",
 )
 
 
@@ -100,11 +118,46 @@ def _wrap_result(result: Any) -> dict[str, Any]:
     return {"result": result}
 
 
-def _truncate_for_model(payload: dict[str, Any], limit: int = 6000) -> dict[str, Any]:
+def _slim_row(row: Any) -> Any:
+    if not isinstance(row, dict):
+        return row
+    return {k: row[k] for k in _SLIM_FIELDS if k in row} or {
+        k: row[k] for k in list(row)[:6]
+    }
+
+
+def _shape_for_model(payload: dict[str, Any], list_cap: int = 5) -> dict[str, Any]:
+    """Drop bulky list rows before JSON truncate — biggest win on search/menu tools."""
+    out = dict(payload)
+    for key in _LIST_KEYS:
+        rows = out.get(key)
+        if isinstance(rows, list) and rows:
+            out[key] = [_slim_row(r) for r in rows[:list_cap]]
+            if len(rows) > list_cap:
+                out[f"{key}_truncated"] = len(rows) - list_cap
+    cats = out.get("categories")
+    if isinstance(cats, list):
+        slim_cats = []
+        for cat in cats[:4]:
+            if not isinstance(cat, dict):
+                continue
+            items = cat.get("items") or []
+            slim_cats.append(
+                {
+                    "name": cat.get("name"),
+                    "items": [_slim_row(i) for i in items[:list_cap]],
+                }
+            )
+        out["categories"] = slim_cats
+    return out
+
+
+def _truncate_for_model(payload: dict[str, Any], limit: int = 1800) -> dict[str, Any]:
     """Keep tool results small so multi-round conversations stay within budget."""
-    blob = json.dumps(payload, default=str)
+    shaped = _shape_for_model(payload if isinstance(payload, dict) else {"result": payload})
+    blob = json.dumps(shaped, default=str)
     if len(blob) <= limit:
-        return payload
+        return shaped
     return {"truncated": True, "preview": blob[:limit]}
 
 
@@ -185,7 +238,7 @@ async def run_tool_conversation(
 def _gemini_declarations(types_mod: Any) -> list[Any]:
     """Convert OpenAI-style tool schemas to Gemini FunctionDeclarations."""
     decls = []
-    for tool in TOOLS:
+    for tool in TOOLS_FOR_LLM:
         fn = tool.get("function") or {}
         name = fn.get("name")
         if not name:
@@ -201,8 +254,16 @@ def _gemini_declarations(types_mod: Any) -> list[Any]:
     return decls
 
 
+def _thinking_config(types_mod: Any) -> Any:
+    """Always minimal thinking — Gemini 3.x medium thinking burns tokens on tool loops."""
+    try:
+        return types_mod.ThinkingConfig(thinking_level="minimal")
+    except (TypeError, ValueError):
+        return types_mod.ThinkingConfig(thinking_budget=0)
+
+
 def _is_malformed(resp: Any) -> bool:
-    """Gemini 2.5 can emit MALFORMED_FUNCTION_CALL with tools + dynamic thinking."""
+    """Detect empty / MALFORMED_FUNCTION_CALL turns that need one retry."""
     try:
         candidates = resp.candidates or []
         if not candidates:
@@ -233,19 +294,16 @@ async def _run_gemini(
     client = genai.Client(api_key=settings.GEMINI_API_KEY)
     declarations = _gemini_declarations(types)
 
-    def _config(with_tools: bool = True, no_thinking: bool = False) -> Any:
-        kwargs: dict[str, Any] = {"system_instruction": system_prompt}
+    def _config(with_tools: bool = True) -> Any:
+        kwargs: dict[str, Any] = {
+            "system_instruction": system_prompt,
+            "thinking_config": _thinking_config(types),
+        }
         if with_tools:
             kwargs["tools"] = [types.Tool(function_declarations=declarations)]
             kwargs["automatic_function_calling"] = types.AutomaticFunctionCallingConfig(
                 disable=True
             )
-        if no_thinking:
-            # Gemini 3.x uses thinking_level; older SDKs still accept thinking_budget.
-            try:
-                kwargs["thinking_config"] = types.ThinkingConfig(thinking_level="minimal")
-            except (TypeError, ValueError):
-                kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
         return types.GenerateContentConfig(**kwargs)
 
     contents: list[Any] = []
@@ -263,9 +321,9 @@ async def _run_gemini(
             model=model, contents=contents, config=_config()
         )
         if _is_malformed(resp):
-            log.info("Gemini malformed/empty turn — retrying without thinking budget")
+            log.info("Gemini malformed/empty turn — one retry")
             resp = await client.aio.models.generate_content(
-                model=model, contents=contents, config=_config(no_thinking=True)
+                model=model, contents=contents, config=_config()
             )
 
         calls = list(resp.function_calls or [])
@@ -323,7 +381,7 @@ async def _groq_create(client: Any, model: str, messages: list[Any], with_tools:
     request (`tool_use_failed`). Retry once with a corrective nudge before giving up."""
     kwargs: dict[str, Any] = {"model": model, "messages": messages}
     if with_tools:
-        kwargs["tools"] = TOOLS
+        kwargs["tools"] = TOOLS_FOR_LLM
         kwargs["tool_choice"] = "auto"
     try:
         return await client.chat.completions.create(**kwargs)

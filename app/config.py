@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     # Conversational agent brain. "auto" prefers Gemini and falls back to Groq.
     LLM_PROVIDER: Literal["auto", "gemini", "groq"] = Field(default="auto")
     GEMINI_API_KEY: str = Field(default="")
-    # gemini-2.5-flash is closed to new API keys; 3.6 is the current Flash workhorse.
-    GEMINI_MODEL: str = Field(default="gemini-3.6-flash")
+    # Cheap tool-loop default; override with GEMINI_MODEL=gemini-3.6-flash if needed.
+    GEMINI_MODEL: str = Field(default="gemini-3.5-flash-lite")
 
     DATABASE_URL: str = Field(default="sqlite:///./nexus_memory.db")
 
