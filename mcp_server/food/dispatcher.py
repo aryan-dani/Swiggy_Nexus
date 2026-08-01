@@ -64,6 +64,22 @@ def handle_get_addresses(params: dict[str, Any]) -> tuple[bool, dict[str, Any] |
     return True, data, None
 
 
+def _query_tokens(query: str) -> list[str]:
+    return [t for t in query.lower().replace(",", " ").split() if len(t) > 2]
+
+
+def _haystack_match(query: str, *fields: str) -> bool:
+    """Match full query or all meaningful tokens (so 'paneer biryani' hits cuisine 'Biryani')."""
+    q = query.lower().strip()
+    if not q:
+        return True
+    hay = " ".join(str(f).lower() for f in fields if f)
+    if q in hay:
+        return True
+    tokens = _query_tokens(q)
+    return bool(tokens) and all(t in hay for t in tokens)
+
+
 def handle_search_restaurants(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
     simulated_latency_jitter_ms()
     address_id = get_param(params, "addressId", "address_id")
@@ -79,9 +95,12 @@ def handle_search_restaurants(params: dict[str, Any]) -> tuple[bool, dict | None
     if query:
         rows = [
             r for r in rows
-            if query in r["name"].lower()
-            or any(query in c.lower() for c in r.get("cuisines", []))
-            or query in str(r.get("tag", "")).lower()
+            if _haystack_match(
+                query,
+                r["name"],
+                " ".join(r.get("cuisines", [])),
+                str(r.get("tag", "")),
+            )
         ] or list(RESTAURANTS)
 
     # Optional deterministic sorting instead of random shuffle
@@ -370,9 +389,7 @@ def handle_search_menu(params: dict[str, Any]) -> tuple[bool, dict | None, dict 
             continue
         for cat in menu_data.get("categories", []):
             for item in cat.get("items", []):
-                name_lower = item.get("name", "").lower()
-                desc_lower = item.get("description", "").lower()
-                if query not in name_lower and query not in desc_lower:
+                if not _haystack_match(query, item.get("name", ""), item.get("description", "")):
                     continue
                 if veg_filter == 1 and not item.get("vegetarian", False):
                     continue

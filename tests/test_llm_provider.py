@@ -68,6 +68,48 @@ def test_gemini_declarations_cover_every_tool():
     assert names == set(get_tool_names())
 
 
+def test_gemini_model_chain_dedupes_preferred():
+    assert llm_mod._gemini_model_chain("gemini-3.6-flash")[0] == "gemini-3.6-flash"
+    assert "gemini-3.5-flash-lite" in llm_mod._gemini_model_chain("gemini-3.6-flash")
+    assert llm_mod._is_model_unavailable(
+        RuntimeError("404 NOT_FOUND. This model models/gemini-2.5-flash is no longer available")
+    )
+
+
+def test_gemini_model_404_tries_next_before_groq(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(llm_mod.settings, "LLM_PROVIDER", "auto")
+    monkeypatch.setattr(llm_mod.settings, "GEMINI_API_KEY", "gem")
+    monkeypatch.setattr(llm_mod.settings, "GROQ_API_KEY", "grq")
+    monkeypatch.setattr(llm_mod.settings, "GEMINI_MODEL", "gemini-2.5-flash")
+
+    tried: list[str] = []
+
+    async def fake_gemini(**kwargs):
+        model = kwargs["model"]
+        tried.append(model)
+        if model == "gemini-2.5-flash":
+            raise RuntimeError("404 NOT_FOUND. This model is no longer available to new users.")
+        return llm_mod.LLMResult(text="ok", provider="gemini", model=model)
+
+    async def never_groq(**kwargs):  # pragma: no cover
+        raise AssertionError("should not hit Groq when a Gemini candidate works")
+
+    monkeypatch.setattr(llm_mod, "_run_gemini", fake_gemini)
+    monkeypatch.setattr(llm_mod, "_run_groq", never_groq)
+
+    async def never(name, args):  # pragma: no cover
+        raise AssertionError("tool should not run")
+
+    result = _run(
+        llm_mod.run_tool_conversation(
+            system_prompt="x", user_message="hi", execute_tool=never
+        )
+    )
+    assert tried[0] == "gemini-2.5-flash"
+    assert result.provider == "gemini"
+    assert result.model == "gemini-3.6-flash"
+
+
 def test_gemini_failure_falls_back_to_groq(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(llm_mod.settings, "LLM_PROVIDER", "auto")
     monkeypatch.setattr(llm_mod.settings, "GEMINI_API_KEY", "gem")

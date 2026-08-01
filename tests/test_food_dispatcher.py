@@ -46,6 +46,26 @@ def test_search_restaurants_query_filter(sample_address_id):
     assert isinstance(data["restaurants"], list)
 
 
+def test_search_restaurants_dish_phrase_hits_biryani_house(sample_address_id):
+    """Demo phrase 'paneer biryani' must surface Biryani House, not a random shuffle of all."""
+    ok, data, err = food.handle_search_restaurants(
+        {"addressId": sample_address_id, "query": "paneer biryani"}
+    )
+    assert ok is True
+    names = [r["name"] for r in data["restaurants"]]
+    assert any("Biryani" in n for n in names)
+
+
+def test_search_menu_finds_paneer_biryani(sample_address_id):
+    ok, data, err = food.handle_search_menu(
+        {"addressId": sample_address_id, "query": "paneer biryani"}
+    )
+    assert ok is True
+    assert data["totalCount"] >= 1
+    assert any(i["name"] == "Paneer Biryani" for i in data["items"])
+    assert any(i["itemId"] == "bh_paneer" for i in data["items"])
+
+
 def test_search_restaurants_sort_by_rating(sample_address_id):
     ok, data, err = food.handle_search_restaurants(
         {"addressId": sample_address_id, "query": "", "sortBy": "rating"}

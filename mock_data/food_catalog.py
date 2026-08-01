@@ -47,10 +47,13 @@ MENU_BY_RESTAURANT: dict[str, dict] = {
         {"item_id": "ck_dumplings", "name": "Vegetable Dumplings (8 pcs)", "price_inr": 245, "vegetarian": True, "hasVariants": False, "hasAddons": False},
     ]}]},
     "fd_biryani_106": {"restaurant_id": "fd_biryani_106", "categories": [{"name": "Biryani", "items": [
+        {"item_id": "bh_paneer", "name": "Paneer Biryani", "description": "Hyderabadi dum with soft paneer", "price_inr": 299, "vegetarian": True, "hasVariants": True, "hasAddons": True},
         {"item_id": "bh_chicken", "name": "Chicken Biryani", "price_inr": 349, "vegetarian": False, "hasVariants": True, "hasAddons": True},
         {"item_id": "bh_mutton", "name": "Mutton Biryani", "price_inr": 449, "vegetarian": False, "hasVariants": True, "hasAddons": True},
+        {"item_id": "bh_egg", "name": "Egg Biryani", "price_inr": 279, "vegetarian": False, "hasVariants": False, "hasAddons": True},
     ]}]},
     "fd_paradise_107": {"restaurant_id": "fd_paradise_107", "categories": [{"name": "Signature", "items": [
+        {"item_id": "pb_veg", "name": "Veg Dum Biryani", "description": "Paneer and veg dum biryani", "price_inr": 329, "vegetarian": True, "hasVariants": False, "hasAddons": True},
         {"item_id": "pb_biryani", "name": "Paradise Special Biryani", "price_inr": 399, "vegetarian": False, "hasVariants": False, "hasAddons": True},
     ]}]},
     "fd_gelato_108": {"restaurant_id": "fd_gelato_108", "categories": [{"name": "Gelato", "items": [

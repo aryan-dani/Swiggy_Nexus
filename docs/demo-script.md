@@ -1,55 +1,22 @@
-# Swiggy Nexus — demo recording script
+# Swiggy Nexus — SPEAK & CLICK teleprompter (~4 min)
 
-Shot-by-shot plan for a 5–6 minute walkthrough. Every segment has a fallback, so a
-flaky API or an exhausted LLM quota never ends the take.
-
-**The one idea to land:** Nexus is not a chatbot. It is an autonomous concierge that
-stages real Swiggy MCP tool calls across Food, Instamart and Dineout, and stops dead
-at a human approval before anything spends money — whether the trigger is a calendar
-event, a Telegram message, or a voice note.
+Read **SPEAK** out loud. Do **CLICK / TYPE** with your hands. Pause on **WAIT**.  
+Never say “ordered” or “booked” until after you tap Approve / Confirm.
 
 ---
 
-## 0. Pre-flight (do this before you hit record)
+## BEFORE RECORD (do once, camera off)
 
-### Environment
+1. Start API (no `--reload`):
 
 ```powershell
 cd C:\Users\dania\Documents\Stuff\My_Repositories\Domain_Based\Agentic_AI\Swiggy_Nexus
-```
-
-`backend/.env` must have:
-
-```env
-GEMINI_API_KEY=...            # primary brain
-LLM_PROVIDER=auto             # Gemini first, Groq fallback
-GROQ_API_KEY=...              # fallback + Whisper voice transcription
-TELEGRAM_BOT_TOKEN=...
-TELEGRAM_CHAT_ID=...
-NOTIFICATION_PLATFORM=telegram
-BASE_URL=http://127.0.0.1:8000
-```
-
-`frontend/.env.local` (must be UTF-8, not UTF-16):
-
-```env
-NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
-```
-
-### Start the stack
-
-Terminal A — API. **Use `backend.main:app` and do NOT pass `--reload`.** The LangGraph
-checkpoint lives in memory by default, so a reload mid-take strands a pending approval.
-
-```powershell
-$env:LANGGRAPH_SQLITE=1
 .\backend\.venv\Scripts\uvicorn.exe backend.main:app --host 127.0.0.1 --port 8000
 ```
 
-Wait for `Application startup complete` and `starting Telegram long-poll`.
+*(Do not use `--reload`. Approvals are durable in SQLite; the LangGraph interrupt lives in-memory for the process lifetime.)*
 
-Terminal B — UI. **Record against a production build**, not the dev server: no Fast
-Refresh, no dev error overlay badge in the corner of your video, and faster rendering.
+2. Start UI:
 
 ```powershell
 cd frontend
@@ -57,209 +24,253 @@ npm run build
 npm start
 ```
 
-Terminal C — kept free for the calendar push command.
-
-### Clean slate + verify
+3. Reset:
 
 ```powershell
 curl.exe -X POST http://127.0.0.1:8000/internal/demo/reset -H "X-Nexus-Tick-Secret: nexus-tick-secret"
 ```
 
-This clears approvals, the timeline, idempotency keys, execution snapshots, MCP carts
-and Telegram chat memory — and **reseeds the pantry to a believable household cadence**
-(milk every ~3 days, bread ~4, dal ~15). Without it, earlier demo runs leave nonsense
-like "Coca-Cola every 0.1 days" on screen.
-
-Then check http://127.0.0.1:8000/api/concierge/agent — you want
-`"configured": true` and `"telegram_ready": true`.
-
-### Screen layout
-
-Browser on the left showing **Concierge Ops**, Telegram Desktop on the right. Both
-visible at once is the whole trick: the phone and the dashboard move together.
-
-Zoom the browser to ~110%. Close other tabs. Silence notifications.
+4. Open http://127.0.0.1:3000  
+5. Sidebar: turn **Developer mode OFF**  
+6. Stay on **Chat** (not Concierge yet)  
+7. Open Telegram Desktop to your Nexus bot in another window (for Scene 4+)
 
 ---
 
-## 1. Cold open — 25s
+# SCENE 1 — Cold open (15 seconds)
 
-**On screen:** Concierge Ops, freshly reset.
+**YOU SEE:** Chat hero with “Run 60s WOW demo” card. Activity rail empty on the right.
 
-> "This is Swiggy Nexus. It is not a chatbot — it is an autonomous concierge. It reads
-> your calendar, listens to your messages, and orchestrates Food, Instamart and Dineout
-> through the Swiggy MCP tool surface. The one rule: it can prepare anything, but it can
-> never spend money without me tapping Approve."
+**CLICK:** Nothing. Just point at the title “Swiggy Nexus”.
 
-Point at the header chips: the active brain (Gemini), Telegram live, and
-**3 tools HITL-gated**.
+**SPEAK (exactly):**
 
-> "Those three gated tools are place order, checkout, and book table. The money tools.
-> The model is never allowed to call them directly."
+> This is Swiggy Nexus. It is not a chatbot. It is an autonomous concierge that orchestrates Food, Instamart, and Dineout through the official Swiggy MCP tool surface. One rule: it can stage anything — but it never spends money until I approve.
 
 ---
 
-## 2. Telegram agent orders dinner — 90s ★ main segment
+# SCENE 2 — 60 second WOW (60–75 seconds)
 
-**On Telegram, type:**
+**CLICK:** The big purple / primary card **“Run 60s WOW demo”**.
+
+*(That auto-sends: `Plan my evening for 12 guests`.)*
+
+**WAIT:** Demo Director bar appears (Plan → Dineout → Instamart → Food). Tool chips start popping under the chat. Right side “Activity” starts filling.
+
+**SPEAK (while tools run — slow, calm):**
+
+> Watch this. One sentence — plan my evening for twelve guests — and Chrono-Host fans out across three Swiggy verticals. Dineout for the table. Instamart for party supplies. Food for dessert. Every chip you see is a real MCP tool call.
+
+**CLICK:** Point (don’t click) at the right rail when the Chrono-Host bundle / cards appear.
+
+**SPEAK:**
+
+> Everything on the right is staged. Nothing is booked. Nothing is checked out. The agent prepared the night — it did not spend.
+
+**IF IT FAILS:** Sidebar → **+ NEW CHAT** → click **Run 60s WOW demo** again.
+
+---
+
+# SCENE 3 — Confirm = money gate (30 seconds)
+
+**YOU SEE:** Chrono-Host panel on the Activity rail with buttons like **Confirm table**, **Confirm groceries**, **Confirm dessert** — or the chat asking you to confirm a time slot.
+
+**CLICK (in order, one beat each):**
+
+1. **Confirm table** (or type in chat: `confirm table` and hit **Send**)
+2. **Confirm groceries** (or type: `confirm groceries` → **Send**)
+3. **Confirm dessert** (or type: `confirm dessert` → **Send**)
+
+If the bot asks for a time first:
+
+**TYPE in chat:** `8:00` then **Send**, then say:
+
+**SPEAK:**
+
+> Yes — confirm that slot.
+
+Then click the three Confirm buttons above.
+
+**SPEAK (as you click the last Confirm):**
+
+> And only now — after my explicit confirm — do the write tools fire. Same human-in-the-loop rule we use in production. The model stages. The human spends.
+
+---
+
+# SCENE 4 — Telegram mirror (60 seconds)
+
+**CLICK:** Left sidebar → **Concierge**.
+
+**ARRANGE SCREEN:** Browser (Concierge Ops) on the left half. Telegram Desktop on the right half. Both visible.
+
+**CLICK:** On the dark **QoL timeline** box → button **Agent activity** (not All).
+
+**SPEAK:**
+
+> Now the same agent on my phone. Control tower on the left. Telegram on the right.
+
+**TYPE in Telegram (exact, then send):**
 
 ```
 order a paneer biryani for dinner
 ```
 
-While it works, narrate what the bot is showing you (it live-edits a status message):
+**WAIT:** Bot shows typing / “Searching…” edits. Timeline on the left fills with agent tools. Then Telegram shows an approval card with **Approve** and **Reject**.
 
-> "That is a real LLM with the 23 Swiggy tool schemas. It is searching restaurants,
-> loading that restaurant's actual menu, and building a cart — all read-only tools."
+**CLICK:** Point at the left timeline, then at **Needs your approval** on Ops (same cart).
 
-**Now the punchline.** Point at the browser without touching it:
+**SPEAK:**
 
-> "And watch the dashboard. Same agent, same tools, mirrored live on the ops timeline.
-> Phone in one hand, control tower in the other."
+> Same brain. Same twenty-three Swiggy tools. Mirrored live on the ops timeline. The cart is staged with a real total — but it is not ordered.
 
-Switch the timeline filter to **Agent activity** to isolate the tool trail.
+**CLICK in Telegram:** the green **Approve** button.
 
-When the bot posts the **⏸ Human approval needed** card with Approve/Reject:
+*(If Telegram is slow: on Ops under Needs your approval → green **Approve**.)*
 
-> "Here is the gate. It staged a cart with a real total, and stopped. Nothing is
-> ordered. The model was told 'awaiting human approval' and it is telling me exactly
-> that in plain language."
+**SPEAK:**
 
-Show the same request in **Needs your approval** on the dashboard, with the itemised
-lines and total.
+> One tap. Now the write tools run — update cart, place order. Not before.
 
-**Tap Approve in Telegram.**
-
-> "One tap, and only now do the write tools fire — update cart, then checkout."
-
-The timeline shows `hitl_approved`. The card clears.
-
-**Fallbacks:** if Telegram is slow, tap the green **Approve** on the dashboard — same
-backend path, same result. If the LLM is quota-limited, the bot says so plainly; switch
-to segment 3 and come back.
+**WAIT:** Approval clears. Timeline shows the approve / write events.
 
 ---
 
-## 3. Voice note — 30s
+# SCENE 5 — Voice note + Reject (25 seconds)
 
-Hold the mic in Telegram and say:
+**CLICK:** In Telegram, hold the **microphone** button.
 
-> "Get me milk, bread and eggs from Instamart."
+**SPEAK into the mic (this is the voice note, not narration):**
 
-The bot echoes the transcript in quotes, then runs the identical agent loop and stages
-an Instamart checkout.
+> Get me milk, bread and eggs from Instamart.
 
-> "Same pipeline from a voice note. Groq Whisper transcribes it, the agent plans it,
-> and it still stops at the approval gate. In production this is a WhatsApp voice note."
+Release the mic.
 
-Approve or Reject — either is a good beat. Rejecting is a nice flex:
+**WAIT:** Bot replies with the transcript in quotes, then an Instamart approval card.
 
-> "I will reject this one. Carts flushed, nothing ordered."
+**SPEAK (to camera):**
 
----
+> Same pipeline from a voice note. Transcription, planning, cart — and it still stops at the approval gate.
 
-## 4. Google Calendar → concierge — 75s
+**CLICK in Telegram:** **Reject**.
 
-This is the "it works while I am not even looking" segment.
+**SPEAK:**
 
-### Path A — live Google push (only if ngrok is already running)
+> I am rejecting this one on purpose. Cart flushed. Nothing ordered. The human is still in charge.
 
-```powershell
-ngrok http 8000
-# set BASE_URL to the https URL in backend/.env, restart the API, then:
-python scripts\google_calendar_watch.py
+**IF MIC FAILS — TYPE instead:**
+
+```
+get me milk bread and eggs from Instamart
 ```
 
-Create a Google Calendar event titled `Housewarming with the team #host #swiggy`,
-location `Home`, and add guests. Save it.
-
-### Path B — replay (recommended for a clean take)
-
-Click **Push calendar event** in the Workflows row, or run:
-
-```powershell
-python scripts\demo_calendar_push.py --mode host
-```
-
-> "That is the exact payload Google pushes to our webhook. I am replaying it so the
-> recording does not depend on a tunnel — the gate, the graph and the approval are
-> identical."
-
-**Narrate what happens on its own:**
-
-> "The event is tagged hash-swiggy, so the concierge wakes up. It pulls each guest's
-> dietary profile from the Taste Vault — one guest is vegan, another is lactose
-> intolerant — merges those into hard constraints, and stages an Instamart run plus a
-> food order that respects all of them."
-
-Show the approval card with line items, then **Approve**.
-
-> "And after approval it writes the plan back into the calendar event description, so
-> the group sees what was ordered without opening this dashboard."
-
-**Fallback:** if the graph errors, use **Trigger Zero-Touch Host** — same graph, started
-from the UI instead of a calendar payload.
+Then Reject the same way.
 
 ---
 
-## 5. Closers — pick two, 45s
+# SCENE 6 — Calendar push (45 seconds)
 
-- **Pantry radar:** "It learns your Instamart reorder cadence. Milk every three days,
-  dal every fifteen. When something is about to run out it stages a refill — Khatam
-  Hone Wala Hai — still behind the same Approve." Click **Refill low items**.
-- **Rain / Rooftop:** "Monsoon hits a rooftop booking, and it offers a pivot. Honest
-  limitation: the Swiggy API has no cancel tool, so we tell the user to cancel in the
-  app rather than pretend."
-- **Bill split:** "Group dinner splits into equal shares with UPI links. That one is a
-  Nexus extension, not a Swiggy tool — I am flagging it so nobody thinks it is official."
-- **Chat tab WOW demo:** the Chrono-Host three-vertical bundle with the Demo Director
-  stepper.
+**YOU SEE:** Concierge Ops → section **Workflows**.
 
----
+**CLICK:** **Push calendar event**.
 
-## 6. Close — 30s
+**SPEAK (immediately after click):**
 
-> "Everything you saw runs on official Swiggy MCP tool names against a local 35-tool
-> mock, so pointing it at mcp.swiggy.com is a config flip, not a rewrite. Writes are
-> gated, staged carts are durable in SQLite, and the approval survives a restart.
->
-> We would love staging access to run this exact demo against the real thing. Thanks,
-> Builders Club."
+> That button replays the exact payload Google Calendar would push to our webhook — a housewarming tagged hash-host and hash-swiggy. I am not depending on ngrok for this take. The gate, the graph, and the approval are identical to the live path.
 
-End on `/api/concierge/agent` or the clean dashboard.
+**WAIT:** Banner goes to staging, then “Waiting for your Approve”. New card under **Needs your approval**. Telegram may ping too.
 
----
+**SPEAK:**
 
-## Honest limits to say out loud (once each)
+> The event is tagged, so the concierge wakes up. It pulls guest diets from the Taste Vault — vegan, lactose intolerant — merges those as hard constraints, and stages Instamart and food that respect them.
 
-- Mock MCP, synthetic catalog, no real money. Real tool names and field shapes.
-- No cancel tool in the Swiggy API — Rooftop Rescue guides a manual cancel.
-- Food has no scheduled delivery in v1; the 10 PM dessert leg is a reminder, not a
-  deferred order.
-- Bill Split is a Nexus extension, not an official tool.
-- Instamart minimum order 99 INR; food cart caps at 1000 INR.
+**CLICK:** Open the approval card so line items are readable → green **Approve** (Ops or Telegram).
 
-## Do not say
+**SPEAK:**
 
-- "It ordered food" before you tap Approve.
-- "This is live Swiggy."
-- Anything about LangGraph internals — say "a workflow with an approval step".
+> After I approve, it writes the plan back into the calendar event description — so the group sees what was staged without opening this dashboard.
+
+**IF BUTTON FAILS:** Click **Trigger Zero-Touch Host** instead and say:
+
+> Same staging graph — triggered from ops instead of the calendar payload.
 
 ---
 
-## Troubleshooting mid-take
+# SCENE 7 — Pantry closer (25 seconds)
 
-| Symptom | Fix |
-|---|---|
-| Bot silent on free text | Check the API log for `starting Telegram long-poll`; localhost uses polling, not webhooks |
-| "My LLM quota is exhausted" | Groq free tier is 100k tokens/day. Set `GEMINI_API_KEY` and `LLM_PROVIDER=auto` |
-| Concierge tab shows 404s | `frontend/.env.local` must be UTF-8 and point at `127.0.0.1:8000`, then restart `npm run dev` |
-| Calendar push returns `ignored` | The event needs `#swiggy` or `#host`; a repeated explicit `event_id` is deduped |
-| Approvals piling up between takes | `POST /internal/demo/reset` with the `X-Nexus-Tick-Secret` header |
-| Approval vanished after a code save | You ran uvicorn with `--reload`; restart without it and set `LANGGRAPH_SQLITE=1` |
-| Red Next.js error badge on screen | You are on `npm run dev`. Record with `npm run build; npm start` — the dev overlay does not exist in production |
-| Pantry radar shows silly intervals | Run the demo reset; it reseeds the household baseline |
+**CLICK:** Scroll down on Concierge Ops to **Khatam Hone Wala Hai** / pantry list.
 
-## Keep off camera
+**SPEAK:**
 
-Analytics and Library tabs are thin localStorage views with nothing to show.
+> It also learns your Instamart reorder cadence — milk every few days, staples on a longer loop.
+
+**CLICK:** **Refill low items**.
+
+**WAIT:** A new staged approval appears (optional: leave it pending or Reject to keep the end clean).
+
+**SPEAK (closing — one breath):**
+
+> When something is about to run out, it stages a refill — still behind Approve. Honest wrap: today this runs on a mock MCP with synthetic catalog and no real money, but every tool name and field shape matches Swiggy’s official surface — pointing at mcp.swiggy.com is a config flip, not a rewrite. There is no cancel tool in the API, so we never fake a cancel. Bill split is a Nexus extension and we flag it as such. We would love staging access to run this exact demo against the real thing. Thank you, Builders Club.
+
+**CLICK:** Stop recording. End frame = Concierge Ops header chips (Gemini · Telegram live · HITL-gated).
+
+---
+
+# FULL SPEAK TRACK (copy to WhatsApp Notes)
+
+Use this if you only want the words. Do the CLICKs from the scenes above in parallel.
+
+1. *This is Swiggy Nexus. It is not a chatbot. It is an autonomous concierge that orchestrates Food, Instamart, and Dineout through the official Swiggy MCP tool surface. One rule: it can stage anything — but it never spends money until I approve.*
+
+2. *Watch this. One sentence — plan my evening for twelve guests — and Chrono-Host fans out across three Swiggy verticals. Dineout for the table. Instamart for party supplies. Food for dessert. Every chip you see is a real MCP tool call.*
+
+3. *Everything on the right is staged. Nothing is booked. Nothing is checked out. The agent prepared the night — it did not spend.*
+
+4. *And only now — after my explicit confirm — do the write tools fire. Same human-in-the-loop rule we use in production. The model stages. The human spends.*
+
+5. *Now the same agent on my phone. Control tower on the left. Telegram on the right.*
+
+6. *Same brain. Same twenty-three Swiggy tools. Mirrored live on the ops timeline. The cart is staged with a real total — but it is not ordered.*
+
+7. *One tap. Now the write tools run — update cart, place order. Not before.*
+
+8. *Same pipeline from a voice note. Transcription, planning, cart — and it still stops at the approval gate.*
+
+9. *I am rejecting this one on purpose. Cart flushed. Nothing ordered. The human is still in charge.*
+
+10. *That button replays the exact payload Google Calendar would push to our webhook — a housewarming tagged hash-host and hash-swiggy. I am not depending on ngrok for this take. The gate, the graph, and the approval are identical to the live path.*
+
+11. *The event is tagged, so the concierge wakes up. It pulls guest diets from the Taste Vault — vegan, lactose intolerant — merges those as hard constraints, and stages Instamart and food that respect them.*
+
+12. *After I approve, it writes the plan back into the calendar event description — so the group sees what was staged without opening this dashboard.*
+
+13. *It also learns your Instamart reorder cadence — milk every few days, staples on a longer loop.*
+
+14. *When something is about to run out, it stages a refill — still behind Approve. Honest wrap: today this runs on a mock MCP with synthetic catalog and no real money, but every tool name and field shape matches Swiggy’s official surface — pointing at mcp.swiggy.com is a config flip, not a rewrite. There is no cancel tool in the API, so we never fake a cancel. Bill split is a Nexus extension and we flag it as such. We would love staging access to run this exact demo against the real thing. Thank you, Builders Club.*
+
+---
+
+# CLICK CHECKLIST (print / second monitor)
+
+| # | Where | Exact click / type |
+|---|--------|-------------------|
+| 1 | Chat | Point only |
+| 2 | Chat | **Run 60s WOW demo** |
+| 3 | Activity | **Confirm table** → **Confirm groceries** → **Confirm dessert** |
+| 4 | Sidebar | **Concierge** |
+| 5 | Timeline | **Agent activity** |
+| 6 | Telegram | type `order a paneer biryani for dinner` → send |
+| 7 | Telegram | **Approve** |
+| 8 | Telegram | mic: *milk, bread and eggs from Instamart* |
+| 9 | Telegram | **Reject** |
+| 10 | Ops Workflows | **Push calendar event** |
+| 11 | Ops | **Approve** |
+| 12 | Pantry | **Refill low items** |
+| 13 | — | Stop record |
+
+---
+
+# FORBIDDEN LINES
+
+- “It ordered food” / “It booked the table” **before** Approve/Confirm  
+- “This is live Swiggy”  
+- “LangGraph” / “SQLite” — say “a workflow with an approval step”

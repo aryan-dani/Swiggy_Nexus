@@ -159,11 +159,13 @@ function HomeInner() {
         <AppSidebar {...sidebarProps} className="h-full min-h-0" />
       </motion.aside>
 
-      <div className="min-h-screen overflow-x-clip bg-white pb-px font-sans text-on-surface selection:bg-primary-container selection:text-white md:pl-72">
-        <div className="flex min-h-screen flex-col">
-          <DashboardHeader sidebarProps={sidebarProps} />
+      <div className="flex h-dvh min-h-0 flex-col overflow-x-clip overflow-y-auto bg-white font-sans text-on-surface selection:bg-primary-container selection:text-white md:overflow-hidden md:pl-72">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="shrink-0">
+            <DashboardHeader sidebarProps={sidebarProps} />
+          </div>
 
-          <div className="border-b border-black/10 px-4 py-2 md:px-8">
+          <div className="shrink-0 border-b border-black/10 px-4 py-2 md:px-8">
             <NexusCommandCenter
               onOpenFoodCart={() => setFoodCartOpen(true)}
               onOpenImCart={() => setImCartOpen(true)}
@@ -171,7 +173,7 @@ function HomeInner() {
           </div>
 
           <motion.main
-            className="flex min-h-0 flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:px-8 lg:py-8"
+            className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 sm:px-6 lg:flex-row lg:gap-0 lg:overflow-hidden lg:px-8 lg:py-4"
             variants={staggerContainer}
             initial="hidden"
             animate="show"
@@ -180,7 +182,7 @@ function HomeInner() {
               <>
                 <motion.section
                   variants={fadeUp}
-                  className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 lg:max-w-xl xl:max-w-2xl"
+                  className="flex h-full min-h-0 min-w-0 flex-1 flex-col lg:max-w-xl lg:overflow-hidden xl:max-w-2xl"
                 >
                   <ChatInterface
                     key={sessionId}
@@ -202,7 +204,7 @@ function HomeInner() {
                 </motion.section>
                 <motion.section
                   variants={fadeUp}
-                  className="flex min-h-0 min-w-0 flex-1 flex-col border-t border-black/10 pt-6 lg:min-h-[70vh] lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0"
+                  className="flex h-full min-h-0 min-w-0 flex-1 flex-col border-t border-black/10 pt-6 lg:overflow-y-auto lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0"
                 >
                   <McpFeed
                     items={feedItems}

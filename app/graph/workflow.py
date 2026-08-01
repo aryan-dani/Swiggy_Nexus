@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import logging
-import sqlite3
-from pathlib import Path
 from typing import Any, Literal
 
 import app  # noqa: F401 — installs langchain.debug shim before langgraph
@@ -46,21 +44,24 @@ def route_after_resume(state: ConciergeState) -> Literal["execute_transactions",
 
 
 def _build_checkpointer() -> Any:
-    """Use MemorySaver by default (approvals + staged payloads are SQLite-durable).
+    """MemorySaver for the LangGraph interrupt (ainvoke is async).
 
-    Optional SqliteSaver when LANGGRAPH_SQLITE=1 and a compatible package is installed.
+    Do NOT use sync SqliteSaver here — it crashes ainvoke with
+    \"SqliteSaver does not support async methods\". Approvals and staged
+    payloads are already durable in the app SQLite store; the graph
+    checkpoint only needs to survive for the life of the process (so run
+    uvicorn without --reload during demos).
+
+    LANGGRAPH_SQLITE=1 is accepted for backwards compatibility but maps to
+    MemorySaver until AsyncSqliteSaver is reliable with the pinned aiosqlite.
     """
     import os
 
     if os.environ.get("LANGGRAPH_SQLITE", "").strip() in ("1", "true", "yes"):
-        try:
-            from langgraph.checkpoint.sqlite import SqliteSaver
-
-            db_path = Path("nexus_checkpoints.db").resolve()
-            conn = sqlite3.connect(str(db_path), check_same_thread=False)
-            return SqliteSaver(conn)
-        except Exception as e:  # noqa: BLE001
-            log.warning("SqliteSaver unavailable (%s); using MemorySaver", e)
+        log.info(
+            "LANGGRAPH_SQLITE requested — using MemorySaver (async-safe). "
+            "Keep uvicorn without --reload so pending HITL interrupts survive."
+        )
     return MemorySaver()
 
 

@@ -96,12 +96,12 @@ export function NexusSignalsBar({
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={neoSpring}
-      className={cn("bento-card-soft", className)}
+      className={cn("rounded border border-black/15 bg-slate-50/80", className)}
     >
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left"
+        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left"
       >
         <Sparkles className="h-3.5 w-3.5 shrink-0 text-violet-700" aria-hidden />
         <span className="min-w-0 flex-1 truncate font-sans text-[11px] font-medium text-slate-700">

@@ -289,8 +289,8 @@ export default function ChatInterface({
   const empty = msgs.length === 0 && !busy;
 
   return (
-    <div className="flex h-full min-h-0 max-h-[min(78vh,880px)] flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center justify-between gap-2 pb-2">
         <h2 className="nexus-section-title text-sm">Chat</h2>
         {(busy || toolCount > 0) && (
           <span className="font-mono text-[10px] font-bold text-slate-500">
@@ -299,17 +299,17 @@ export default function ChatInterface({
         )}
       </div>
 
-      <DemoDirector
-        visible={showDirector && (busy || showSummary || demoFailed)}
-        activeStep={demoStep}
-        caption={demoCaption}
-        failed={demoFailed}
-      />
-
       <div
         id="nexus-chat-scroll"
         className="neo-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto pr-1"
       >
+        <DemoDirector
+          visible={showDirector && (busy || showSummary || demoFailed)}
+          activeStep={demoStep}
+          caption={demoCaption}
+          failed={demoFailed}
+        />
+
         {empty && onRunWow && onOpenConcierge && onPickScenario ? (
           <ChatHero
             onRunWow={(scenario, prompt) => {
@@ -430,79 +430,80 @@ export default function ChatInterface({
           )}
         </AnimatePresence>
 
+        {/* Dev traces live in the scroll region so they never shove the composer up */}
+        <AnimatePresence>
+          {devMode && (
+            <motion.div
+              key="dev-panel"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              className="rounded border border-amber-400 bg-amber-50 p-2"
+            >
+              <div className="mb-1 flex items-center gap-2 font-display text-[10px] font-black uppercase text-amber-900">
+                <Terminal className="h-3.5 w-3.5" />
+                Dev · JSON-RPC + traces
+              </div>
+              <ToolTraceTheater logs={rpcLogs} className="mb-1" />
+              <ScrollArea className="h-24 rounded border border-black/10 bg-white">
+                <pre className="p-2 font-mono text-[10px] text-slate-700">
+                  {rpcLogs.length === 0 ? "// Tool calls after send…" : rpcLogs.join("\n---\n")}
+                </pre>
+              </ScrollArea>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div ref={bottomRef} className="h-px shrink-0" aria-hidden />
       </div>
 
-      {(thinking.length > 0 || busy) && (
-        <div className="shrink-0">
-          <button
-            type="button"
-            onClick={() => setShowThinking((s) => !s)}
-            className="flex w-full items-center gap-2 font-sans text-[11px] font-medium text-slate-500 hover:text-slate-800"
-          >
-            <ChevronDown
-              className={cn("h-3.5 w-3.5 transition-transform", showThinking && "rotate-180")}
-            />
-            Planner reasoning · {thinking.length || (busy ? "…" : 0)} steps
-          </button>
-          <AnimatePresence initial={false}>
-            {showThinking && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className="overflow-hidden"
-              >
-                <ul className="mt-1 max-h-24 space-y-1 overflow-y-auto rounded border border-black/10 bg-slate-50 p-2 font-mono text-[10px] text-slate-600">
-                  {thinking.map((line, i) => (
-                    <li key={`${i}-${line.slice(0, 16)}`} className="border-l-2 border-violet-300 pl-2">
-                      {line}
-                    </li>
-                  ))}
-                  {busy && thinking.length === 0 && (
-                    <li className="flex items-center gap-2">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      Starting…
-                    </li>
-                  )}
-                </ul>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      )}
-
-      <AnimatePresence>
-        {devMode && (
-          <motion.div
-            key="dev-panel"
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            className="overflow-hidden rounded border border-amber-400 bg-amber-50 p-3"
-          >
-            <div className="mb-2 flex items-center gap-2 font-display text-[10px] font-black uppercase text-amber-900">
-              <Terminal className="h-3.5 w-3.5" />
-              Dev · JSON-RPC + traces
-            </div>
-            <ToolTraceTheater logs={rpcLogs} className="mb-2" />
-            <ScrollArea className="h-20 rounded border border-black/10 bg-white">
-              <pre className="p-2 font-mono text-[10px] text-slate-700">
-                {rpcLogs.length === 0 ? "// Tool calls after send…" : rpcLogs.join("\n---\n")}
-              </pre>
-            </ScrollArea>
-          </motion.div>
+      <div className="flex shrink-0 flex-col gap-1.5 border-t border-black/10 bg-white pt-2">
+        {(thinking.length > 0 || busy) && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowThinking((s) => !s)}
+              className="flex w-full items-center gap-2 font-sans text-[11px] font-medium text-slate-500 hover:text-slate-800"
+            >
+              <ChevronDown
+                className={cn("h-3.5 w-3.5 transition-transform", showThinking && "rotate-180")}
+              />
+              Planner reasoning · {thinking.length || (busy ? "…" : 0)} steps
+            </button>
+            <AnimatePresence initial={false}>
+              {showThinking && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden"
+                >
+                  <ul className="mt-1 max-h-16 space-y-1 overflow-y-auto rounded border border-black/10 bg-slate-50 p-2 font-mono text-[10px] text-slate-600">
+                    {thinking.map((line, i) => (
+                      <li key={`${i}-${line.slice(0, 16)}`} className="border-l-2 border-violet-300 pl-2">
+                        {line}
+                      </li>
+                    ))}
+                    {busy && thinking.length === 0 && (
+                      <li className="flex items-center gap-2">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Starting…
+                      </li>
+                    )}
+                  </ul>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         )}
-      </AnimatePresence>
 
-      <NexusSignalsBar
-        settings={demoSettings}
-        onSettingsChange={onDemoSettingsChange}
-        onReset={onResetSession}
-        onSuggestPrompt={(t) => setInput(t)}
-      />
+        <NexusSignalsBar
+          settings={demoSettings}
+          onSettingsChange={onDemoSettingsChange}
+          onReset={onResetSession}
+          onSuggestPrompt={(t) => setInput(t)}
+        />
 
-      <div className="mt-auto shrink-0">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -553,7 +554,7 @@ export default function ChatInterface({
             )}
           </button>
         </form>
-        <p className="mt-2 text-center font-mono text-[10px] uppercase tracking-widest text-slate-400">
+        <p className="pb-0.5 text-center font-mono text-[9px] uppercase tracking-widest text-slate-400">
           Demo data only — not real Swiggy orders
         </p>
       </div>

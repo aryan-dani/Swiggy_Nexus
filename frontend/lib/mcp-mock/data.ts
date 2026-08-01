@@ -64,7 +64,9 @@ export const MENUS: Record<string, { restaurant_id: string; categories: { name: 
     { item_id: "gv_dark", name: "Dark Chocolate Gelato", price_inr: 229, vegetarian: true },
   ]}]},
   fd_biryani_106: { restaurant_id: "fd_biryani_106", categories: [{ name: "Biryani", items: [
+    { item_id: "bh_paneer", name: "Paneer Biryani", price_inr: 299, vegetarian: true },
     { item_id: "bh_chicken", name: "Chicken Biryani", price_inr: 349, vegetarian: false },
+    { item_id: "bh_mutton", name: "Mutton Biryani", price_inr: 449, vegetarian: false },
   ]}]},
 };
 

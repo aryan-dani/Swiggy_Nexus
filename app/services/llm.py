@@ -27,6 +27,30 @@ ToolObserver = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 HALT_KEY = "__halt__"
 
+# Tried in order when the configured model 404s (new keys cannot use 2.5-flash).
+_GEMINI_MODEL_CANDIDATES = (
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+)
+
+
+def _gemini_model_chain(preferred: str) -> list[str]:
+    ordered = [preferred, *_GEMINI_MODEL_CANDIDATES]
+    seen: set[str] = set()
+    out: list[str] = []
+    for m in ordered:
+        m = (m or "").strip()
+        if m and m not in seen:
+            seen.add(m)
+            out.append(m)
+    return out
+
+
+def _is_model_unavailable(exc: BaseException) -> bool:
+    text = str(exc).lower()
+    return "404" in text or "not_found" in text or "no longer available" in text
+
 
 class LLMUnavailable(RuntimeError):
     """No usable provider (no keys, or every provider failed)."""
@@ -108,31 +132,39 @@ async def run_tool_conversation(
     history = history or []
 
     if provider == "gemini":
-        try:
-            return await _run_gemini(
-                system_prompt=system_prompt,
-                user_message=user_message,
-                execute_tool=execute_tool,
-                history=history,
-                on_tool_start=on_tool_start,
-                max_rounds=max_rounds,
-                model=model,
-            )
-        except Exception as e:  # noqa: BLE001 — provider failure must not kill the demo
-            if settings.LLM_PROVIDER == "gemini":
-                raise  # explicit gemini-only choice: fail loudly
-            if not settings.GROQ_API_KEY.strip():
-                raise LLMUnavailable(f"Gemini failed and no Groq fallback: {e}") from e
-            log.warning("Gemini failed (%s) — falling back to Groq", e)
-            return await _run_groq(
-                system_prompt=system_prompt,
-                user_message=user_message,
-                execute_tool=execute_tool,
-                history=history,
-                on_tool_start=on_tool_start,
-                max_rounds=max_rounds,
-                model=settings.GROQ_MODEL,
-            )
+        last_err: Exception | None = None
+        for candidate in _gemini_model_chain(model):
+            try:
+                return await _run_gemini(
+                    system_prompt=system_prompt,
+                    user_message=user_message,
+                    execute_tool=execute_tool,
+                    history=history,
+                    on_tool_start=on_tool_start,
+                    max_rounds=max_rounds,
+                    model=candidate,
+                )
+            except Exception as e:  # noqa: BLE001 — try next model / Groq
+                last_err = e
+                if _is_model_unavailable(e):
+                    log.warning("Gemini model %s unavailable (%s) — trying next", candidate, e)
+                    continue
+                break
+        assert last_err is not None
+        if settings.LLM_PROVIDER == "gemini":
+            raise last_err  # explicit gemini-only choice: fail loudly
+        if not settings.GROQ_API_KEY.strip():
+            raise LLMUnavailable(f"Gemini failed and no Groq fallback: {last_err}") from last_err
+        log.warning("Gemini failed (%s) — falling back to Groq", last_err)
+        return await _run_groq(
+            system_prompt=system_prompt,
+            user_message=user_message,
+            execute_tool=execute_tool,
+            history=history,
+            on_tool_start=on_tool_start,
+            max_rounds=max_rounds,
+            model=settings.GROQ_MODEL,
+        )
 
     return await _run_groq(
         system_prompt=system_prompt,
@@ -209,7 +241,11 @@ async def _run_gemini(
                 disable=True
             )
         if no_thinking:
-            kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+            # Gemini 3.x uses thinking_level; older SDKs still accept thinking_budget.
+            try:
+                kwargs["thinking_config"] = types.ThinkingConfig(thinking_level="minimal")
+            except (TypeError, ValueError):
+                kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
         return types.GenerateContentConfig(**kwargs)
 
     contents: list[Any] = []
