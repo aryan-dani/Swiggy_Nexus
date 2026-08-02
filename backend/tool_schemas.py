@@ -472,6 +472,77 @@ _DINEOUT_TOOLS: list[dict[str, Any]] = [
 
 TOOLS: list[dict[str, Any]] = [*_FOOD_TOOLS, *_IM_TOOLS, *_DINEOUT_TOOLS]
 
+_NEXUS_TOOLS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "nexus_plan_night_out",
+            "description": (
+                "Schedule a Google Calendar dinner invite, stage a Dineout table, "
+                "and prepare equal bill split after Approve. "
+                "ONLY call when the user already gave guests AND restaurant AND time/slot. "
+                "If any of those are missing, do NOT call this — tell them to use /nightout."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "guests": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Friend first names or emails (e.g. Himali, Siya, Swayam).",
+                    },
+                    "venue": {
+                        "type": "string",
+                        "description": "Restaurant name/location (required — no default).",
+                    },
+                    "guest_count": {
+                        "type": "integer",
+                        "description": "Party size including host. Default = guests + host.",
+                    },
+                    "slot": {
+                        "type": "string",
+                        "description": "Preferred table time like 20:00.",
+                    },
+                    "start_iso": {
+                        "type": "string",
+                        "description": "ISO start time for the Calendar event.",
+                    },
+                },
+                "required": ["guests", "venue"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "nexus_plan_dinner_party",
+            "description": (
+                "Schedule a home dinner-party Calendar invite, stage Food/Instamart carts, "
+                "and equal-split after Approve. Use for hosting + ordering food + split."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "guests": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Friend first names or emails.",
+                    },
+                    "dish_query": {
+                        "type": "string",
+                        "description": "What to order (e.g. paneer biryani).",
+                    },
+                    "guest_count": {"type": "integer"},
+                },
+                "required": ["guests"],
+            },
+        },
+    },
+]
+
+# Telegram agent tools = MCP verticals + Nexus orchestration helpers.
+TELEGRAM_TOOLS: list[dict[str, Any]] = [*TOOLS, *_NEXUS_TOOLS]
+
 
 def _short_desc(text: str, limit: int = 90) -> str:
     first = (text or "").split(".")[0].strip()
@@ -502,6 +573,7 @@ def _tools_for_llm(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 # LLM-facing schemas (Telegram + web chat). Full TOOLS stay for docs / introspection.
 TOOLS_FOR_LLM: list[dict[str, Any]] = _tools_for_llm(TOOLS)
+TELEGRAM_TOOLS_FOR_LLM: list[dict[str, Any]] = _tools_for_llm(TELEGRAM_TOOLS)
 
 _VERTICAL_MAP: dict[str, list[dict[str, Any]]] = {
     "food": _FOOD_TOOLS,

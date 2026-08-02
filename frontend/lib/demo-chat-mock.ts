@@ -12,6 +12,10 @@ type NormalizedCtx = {
   budgetInr: number;
   city: string;
   recipeHint: string;
+  eventTitle: string;
+  cuisineHint: string;
+  dessertQuery: string;
+  imQuery: string;
 };
 
 function normalizeContext(raw: Record<string, unknown> | undefined): NormalizedCtx {
@@ -34,6 +38,16 @@ function normalizeContext(raw: Record<string, unknown> | undefined): NormalizedC
       typeof raw?.recipeHint === "string"
         ? raw.recipeHint
         : "Paneer tikka masala",
+    eventTitle:
+      typeof event.title === "string" ? event.title : "Housewarming Saturday",
+    cuisineHint:
+      typeof event.cuisineHint === "string" ? event.cuisineHint : "italian",
+    dessertQuery:
+      typeof event.dessertQuery === "string" ? event.dessertQuery : "gelato",
+    imQuery:
+      typeof event.imQuery === "string"
+        ? event.imQuery
+        : "party plates napkins drinks",
   };
 }
 
@@ -432,20 +446,24 @@ export function buildDemoChatEvents(
 
   if (vertical === "chrono") {
     const guests = ctx.partySize || 12;
+    const cuisine = ctx.cuisineHint || "italian";
+    const dessert = ctx.dessertQuery || "gelato";
+    const imQ = ctx.imQuery || "party";
+    const title = ctx.eventTitle || "Your evening";
     const dineRaw = dineoutAvailability("do-italian-spesso", guests, "20:00", ctx);
-    const martRows = instamartInventory("party", ctx);
-    const foodRows = foodSearchRestaurants("gelato", coords.lat, coords.long);
+    const martRows = instamartInventory(imQ.split(/\s+/)[0] || "party", ctx);
+    const foodRows = foodSearchRestaurants(dessert, coords.lat, coords.long);
 
     const toolEvents: StreamEvent[] = [
       { type: "tool", payload: { phase: "Executor", method: "dineout_get_saved_locations", params: {}, result: { locations: [{ label: "Home" }] } } },
-      { type: "tool", payload: { phase: "Executor", method: "dineout_search_restaurants_dineout", params: { query: "italian" }, result: dineRaw } },
+      { type: "tool", payload: { phase: "Executor", method: "dineout_search_restaurants_dineout", params: { query: cuisine }, result: dineRaw } },
       { type: "tool", payload: { phase: "Executor", method: "dineout_get_available_slots", params: { guestCount: guests }, result: { slots: [{ slotId: 4204, label: "20:00" }] } } },
       { type: "tool", payload: { phase: "Executor", method: "food_get_addresses", params: {}, result: { addresses: [{ addressId: "addr_kp_001" }] } } },
-      { type: "tool", payload: { phase: "Executor", method: "im_search_products", params: { query: "party" }, result: martRows } },
+      { type: "tool", payload: { phase: "Executor", method: "im_search_products", params: { query: imQ }, result: martRows } },
       { type: "tool", payload: { phase: "Executor", method: "im_your_go_to_items", params: { party: true }, result: { products: martRows.slice(0, 2) } } },
       { type: "tool", payload: { phase: "Executor", method: "im_update_cart", params: { items: 4 }, result: { total: 1847 } } },
       { type: "tool", payload: { phase: "Executor", method: "im_get_cart", params: {}, result: { total: 1847, bill: { grandTotal: 1872 } } } },
-      { type: "tool", payload: { phase: "Executor", method: "food_search_restaurants", params: { query: "gelato" }, result: foodRows } },
+      { type: "tool", payload: { phase: "Executor", method: "food_search_restaurants", params: { query: dessert }, result: foodRows } },
       { type: "tool", payload: { phase: "Executor", method: "food_get_restaurant_menu", params: { restaurantId: "fd_gelato_108" }, result: { categories: [] } } },
       { type: "tool", payload: { phase: "Executor", method: "food_update_food_cart", params: { lines: 2 }, result: { subtotal_inr: 498 } } },
       { type: "tool", payload: { phase: "Executor", method: "food_get_food_cart", params: {}, result: { total: 649 } } },
@@ -454,15 +472,15 @@ export function buildDemoChatEvents(
     feedItems = [
       {
         type: "event_bundle",
-        title: "Evening plan · Housewarming Saturday",
-        subtitle: "Dineout + Instamart + Food dessert (staged)",
+        title: `Evening plan · ${title}`,
+        subtitle: `Dineout + Instamart + ${dessert} (staged)`,
         meta: {
           guests,
-          cuisine: "italian",
-          event: "Housewarming Saturday",
-          dineout: { restaurant: "Italian Spesso", slot: "20:00" },
-          instamart: { total: 1847, items: 6 },
-          food: { total: 649, item: "Gelato" },
+          cuisine,
+          event: title,
+          dineout: { restaurant: `${cuisine} pick`, slot: "20:00" },
+          instamart: { total: 1847, items: 6, query: imQ },
+          food: { total: 649, item: dessert },
         },
       },
       ...toDineoutFeed(dineRaw, ctx, []),
@@ -471,14 +489,14 @@ export function buildDemoChatEvents(
     ];
 
     const assistantReply =
-      `Chrono-Host bundle for ${guests} guests: Italian table ~8 PM (confirm to book), ` +
-      `party supplies staged on Instamart, gelato dessert queued for a 10 PM reminder. Nothing auto-placed.`;
+      `Chrono-Host bundle for **${title}** (${guests} guests · ${cuisine}): table ~8 PM (confirm to book), ` +
+      `“${imQ}” staged on Instamart, ${dessert} dessert queued for a 10 PM reminder. Nothing auto-placed.`;
 
     return [
       ...thinkingEvents,
       {
         type: "thinking",
-        payload: { text: "Planner · Chrono-Host: Dineout → Instamart → Food dessert leg" },
+        payload: { text: `Planner · Chrono-Host: ${title} — Dineout → Instamart → ${dessert}` },
       },
       ...toolEvents,
       { type: "feed", payload: { items: feedItems } },

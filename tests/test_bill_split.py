@@ -24,13 +24,13 @@ def test_equal_split_sums_to_total():
 
 
 def test_split_rounding_remainder_goes_to_host():
-    result = compute_split(1001, ["dani@nexus.ai", "priya@nexus.ai", "alex@nexus.ai"])
+    result = compute_split(1001, ["aryan@nexus.ai", "himali@nexus.ai", "siya@nexus.ai"])
     shares = result["shares"]
     assert shares[0]["is_host"] is True
     assert shares[0]["amount_inr"] == 335
     assert shares[1]["amount_inr"] == shares[2]["amount_inr"] == 333
     assert sum(s["amount_inr"] for s in shares) == 1001
-    assert shares[0]["name"] == "Dani"  # Taste Vault name mapping
+    assert shares[0]["name"] == "Aryan"  # Taste Vault name mapping
 
 
 def test_split_upi_links_contain_amount():
@@ -50,7 +50,7 @@ def test_split_rejects_bad_input():
 def test_split_endpoint():
     res = client.post(
         "/api/concierge/split",
-        json={"total_inr": 900, "attendees": ["dani@nexus.ai", "priya@nexus.ai"], "title": "Test dinner"},
+        json={"total_inr": 900, "attendees": ["aryan@nexus.ai", "himali@nexus.ai"], "title": "Test dinner"},
     )
     assert res.status_code == 200
     body = res.json()

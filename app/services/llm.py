@@ -1,11 +1,12 @@
-"""Unified async tool-calling LLM layer — Gemini primary, Groq fallback.
+"""Unified async tool-calling LLM layer — Gemini primary, Groq fallback, Ollama local.
 
 The SSE chat path in `backend/llm_orchestrator.py` stays a sync generator for
 streaming. This module is the async equivalent used by the Telegram agent, so
 nothing blocks the long-poll event loop.
 
 Both providers share the tool schemas in `backend/tool_schemas.py`, so the
-Telegram brain and the web chat brain can never drift apart.
+Telegram brain and the web chat brain can never drift apart. Set
+`LLM_PROVIDER=ollama` for local rehearsal without burning Gemini quota.
 """
 
 from __future__ import annotations
@@ -91,6 +92,8 @@ def active_provider_label() -> str:
         return f"Gemini · {model}"
     if provider == "groq":
         return f"Groq · {model}"
+    if provider == "ollama":
+        return f"Ollama · {model}"
     return "No LLM configured"
 
 
@@ -98,7 +101,10 @@ def _resolve_provider() -> tuple[str, str]:
     choice = settings.LLM_PROVIDER
     has_gemini = bool(settings.GEMINI_API_KEY.strip())
     has_groq = bool(settings.GROQ_API_KEY.strip())
+    has_ollama = bool(settings.OLLAMA_BASE_URL.strip())
 
+    if choice == "ollama" and has_ollama:
+        return "ollama", settings.OLLAMA_MODEL
     if choice == "gemini" and has_gemini:
         return "gemini", settings.GEMINI_MODEL
     if choice == "groq" and has_groq:
@@ -174,15 +180,36 @@ async def run_tool_conversation(
     history: list[dict[str, str]] | None = None,
     on_tool_start: ToolObserver | None = None,
     max_rounds: int = 6,
+    tools: list[dict[str, Any]] | None = None,
 ) -> LLMResult:
     """Run a tool-calling conversation to completion and return the final text."""
     provider, model = _resolve_provider()
     if provider == "none":
         raise LLMUnavailable(
-            "Set GEMINI_API_KEY (or GROQ_API_KEY) to enable the conversational agent."
+            "Set LLM_PROVIDER=ollama (local) or GEMINI_API_KEY / GROQ_API_KEY."
         )
 
     history = history or []
+    tool_schemas = tools or TOOLS_FOR_LLM
+
+    if provider == "ollama":
+        try:
+            return await _run_ollama(
+                system_prompt=system_prompt,
+                user_message=user_message,
+                execute_tool=execute_tool,
+                history=history,
+                on_tool_start=on_tool_start,
+                max_rounds=max_rounds,
+                model=model,
+                tools=tool_schemas,
+            )
+        except LLMUnavailable:
+            raise
+        except Exception as e:  # noqa: BLE001 — never fall through to Gemini
+            raise LLMUnavailable(
+                f"Ollama failed ({e}). Is `ollama serve` running at {settings.OLLAMA_BASE_URL}?"
+            ) from e
 
     if provider == "gemini":
         last_err: Exception | None = None
@@ -196,6 +223,7 @@ async def run_tool_conversation(
                     on_tool_start=on_tool_start,
                     max_rounds=max_rounds,
                     model=candidate,
+                    tools=tool_schemas,
                 )
             except Exception as e:  # noqa: BLE001 — try next model / Groq
                 last_err = e
@@ -217,6 +245,7 @@ async def run_tool_conversation(
             on_tool_start=on_tool_start,
             max_rounds=max_rounds,
             model=settings.GROQ_MODEL,
+            tools=tool_schemas,
         )
 
     return await _run_groq(
@@ -227,6 +256,7 @@ async def run_tool_conversation(
         on_tool_start=on_tool_start,
         max_rounds=max_rounds,
         model=model,
+        tools=tool_schemas,
     )
 
 
@@ -235,10 +265,10 @@ async def run_tool_conversation(
 # ---------------------------------------------------------------------------
 
 
-def _gemini_declarations(types_mod: Any) -> list[Any]:
+def _gemini_declarations(types_mod: Any, tools: list[dict[str, Any]] | None = None) -> list[Any]:
     """Convert OpenAI-style tool schemas to Gemini FunctionDeclarations."""
     decls = []
-    for tool in TOOLS_FOR_LLM:
+    for tool in tools or TOOLS_FOR_LLM:
         fn = tool.get("function") or {}
         name = fn.get("name")
         if not name:
@@ -287,12 +317,13 @@ async def _run_gemini(
     on_tool_start: ToolObserver | None,
     max_rounds: int,
     model: str,
+    tools: list[dict[str, Any]] | None = None,
 ) -> LLMResult:
     from google import genai
     from google.genai import types
 
     client = genai.Client(api_key=settings.GEMINI_API_KEY)
-    declarations = _gemini_declarations(types)
+    declarations = _gemini_declarations(types, tools)
 
     def _config(with_tools: bool = True) -> Any:
         kwargs: dict[str, Any] = {
@@ -372,23 +403,29 @@ async def _run_gemini(
 
 
 # ---------------------------------------------------------------------------
-# Groq (async)
+# OpenAI-compatible (Groq + Ollama)
 # ---------------------------------------------------------------------------
 
 
-async def _groq_create(client: Any, model: str, messages: list[Any], with_tools: bool) -> Any:
-    """Groq llama occasionally emits a malformed tool call and the API 400s the whole
-    request (`tool_use_failed`). Retry once with a corrective nudge before giving up."""
+async def _openai_compat_create(
+    client: Any,
+    model: str,
+    messages: list[Any],
+    *,
+    with_tools: bool,
+    tools: list[dict[str, Any]] | None = None,
+) -> Any:
+    """Create with one retry on malformed tool calls (Groq / some Ollama models)."""
     kwargs: dict[str, Any] = {"model": model, "messages": messages}
     if with_tools:
-        kwargs["tools"] = TOOLS_FOR_LLM
+        kwargs["tools"] = tools or TOOLS_FOR_LLM
         kwargs["tool_choice"] = "auto"
     try:
         return await client.chat.completions.create(**kwargs)
     except Exception as e:  # noqa: BLE001
         if "tool_use_failed" not in str(e) and "tool call validation" not in str(e):
             raise
-        log.warning("Groq malformed tool call — retrying once with a corrective nudge")
+        log.warning("Malformed tool call — retrying once with a corrective nudge")
         nudged = list(messages) + [
             {
                 "role": "system",
@@ -403,8 +440,10 @@ async def _groq_create(client: Any, model: str, messages: list[Any], with_tools:
         return await client.chat.completions.create(**retry_kwargs)
 
 
-async def _run_groq(
+async def _run_openai_compatible(
     *,
+    client: Any,
+    provider: str,
     system_prompt: str,
     user_message: str,
     execute_tool: ToolExecutor,
@@ -412,11 +451,8 @@ async def _run_groq(
     on_tool_start: ToolObserver | None,
     max_rounds: int,
     model: str,
+    tools: list[dict[str, Any]] | None = None,
 ) -> LLMResult:
-    from groq import AsyncGroq
-
-    client = AsyncGroq(api_key=settings.GROQ_API_KEY)
-
     messages: list[Any] = [{"role": "system", "content": system_prompt}]
     for turn in history:
         role = "assistant" if turn.get("role") in ("assistant", "model") else "user"
@@ -425,10 +461,13 @@ async def _run_groq(
             messages.append({"role": role, "content": text})
     messages.append({"role": "user", "content": user_message})
 
-    result = LLMResult(provider="groq", model=model)
+    result = LLMResult(provider=provider, model=model)
+    tool_schemas = tools or TOOLS_FOR_LLM
 
     for round_index in range(max_rounds):
-        resp = await _groq_create(client, model, messages, with_tools=True)
+        resp = await _openai_compat_create(
+            client, model, messages, with_tools=True, tools=tool_schemas
+        )
         msg = resp.choices[0].message
         calls = list(msg.tool_calls or [])
         if not calls:
@@ -464,10 +503,69 @@ async def _run_groq(
         result.rounds = round_index + 1
 
         if halted:
-            final = await _groq_create(client, model, messages, with_tools=False)
+            final = await _openai_compat_create(
+                client, model, messages, with_tools=False, tools=tool_schemas
+            )
             result.text = (final.choices[0].message.content or "").strip()
             result.halted = True
             return result
 
     result.text = result.text or "I ran out of tool steps — try narrowing the request."
     return result
+
+
+async def _run_groq(
+    *,
+    system_prompt: str,
+    user_message: str,
+    execute_tool: ToolExecutor,
+    history: list[dict[str, str]],
+    on_tool_start: ToolObserver | None,
+    max_rounds: int,
+    model: str,
+    tools: list[dict[str, Any]] | None = None,
+) -> LLMResult:
+    from groq import AsyncGroq
+
+    client = AsyncGroq(api_key=settings.GROQ_API_KEY)
+    return await _run_openai_compatible(
+        client=client,
+        provider="groq",
+        system_prompt=system_prompt,
+        user_message=user_message,
+        execute_tool=execute_tool,
+        history=history,
+        on_tool_start=on_tool_start,
+        max_rounds=max_rounds,
+        model=model,
+        tools=tools,
+    )
+
+
+async def _run_ollama(
+    *,
+    system_prompt: str,
+    user_message: str,
+    execute_tool: ToolExecutor,
+    history: list[dict[str, str]],
+    on_tool_start: ToolObserver | None,
+    max_rounds: int,
+    model: str,
+    tools: list[dict[str, Any]] | None = None,
+) -> LLMResult:
+    from openai import AsyncOpenAI
+
+    base = settings.OLLAMA_BASE_URL.rstrip("/")
+    client = AsyncOpenAI(base_url=f"{base}/v1", api_key="ollama")
+    return await _run_openai_compatible(
+        client=client,
+        provider="ollama",
+        system_prompt=system_prompt,
+        user_message=user_message,
+        execute_tool=execute_tool,
+        history=history,
+        on_tool_start=on_tool_start,
+        max_rounds=max_rounds,
+        model=model,
+        tools=tools,
+    )

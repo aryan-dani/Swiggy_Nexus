@@ -165,6 +165,7 @@ def init_db() -> None:
     if HAS_SQLALCHEMY:
         Base.metadata.create_all(bind=engine)
         seed_demo_users()
+    ensure_night_out_guests()
 
 
 def _init_db_sqlite() -> None:
@@ -205,9 +206,12 @@ def _init_db_sqlite() -> None:
         cur.execute("SELECT COUNT(*) FROM users")
         if cur.fetchone()[0] == 0:
             demo_users = [
-                ("dani@nexus.ai", "Dani Aryan", 1, 0, 4, '["peanuts"]', '["Italian", "North Indian"]', '["mushrooms"]'),
+                ("aryan@nexus.ai", "Aryan", 1, 0, 4, '["peanuts"]', '["Italian", "North Indian"]', '["mushrooms"]'),
+                ("himali@nexus.ai", "Himali", 1, 0, 2, '[]', '["South Indian", "Asian"]', '[]'),
+                ("siya@nexus.ai", "Siya", 1, 0, 3, '[]', '["North Indian", "Continental"]', '["mushroom"]'),
+                ("swayam@nexus.ai", "Swayam", 0, 0, 4, '[]', '["Continental", "Asian"]', '[]'),
                 ("priya@nexus.ai", "Priya Sharma", 1, 1, 2, '["lactose"]', '["Asian", "South Indian"]', '["capsicum"]'),
-                ("alex@nexus.ai", "Alex Mercer", 0, 0, 5, '[]', '["Italian", "Mexican"]', '[]'),
+                ("kabir@nexus.ai", "Kabir", 0, 0, 5, '[]', '["North Indian", "Mughlai"]', '[]'),
             ]
             for email, name, is_veg, is_vegan, spice, alg, cuis, dis in demo_users:
                 cur.execute("INSERT INTO users (email, full_name) VALUES (?, ?)", (email, name))
@@ -232,14 +236,44 @@ def seed_demo_users() -> None:
 
         demo_users = [
             {
-                "email": "dani@nexus.ai",
-                "full_name": "Dani Aryan",
+                "email": "aryan@nexus.ai",
+                "full_name": "Aryan",
                 "is_vegetarian": True,
                 "is_vegan": False,
                 "spice_tolerance": 4,
                 "allergies": ["peanuts"],
                 "fav_cuisines": ["Italian", "North Indian"],
                 "disliked_ingredients": ["mushrooms"],
+            },
+            {
+                "email": "himali@nexus.ai",
+                "full_name": "Himali",
+                "is_vegetarian": True,
+                "is_vegan": False,
+                "spice_tolerance": 2,
+                "allergies": [],
+                "fav_cuisines": ["South Indian", "Asian"],
+                "disliked_ingredients": [],
+            },
+            {
+                "email": "siya@nexus.ai",
+                "full_name": "Siya",
+                "is_vegetarian": True,
+                "is_vegan": False,
+                "spice_tolerance": 3,
+                "allergies": [],
+                "fav_cuisines": ["North Indian", "Continental"],
+                "disliked_ingredients": ["mushroom"],
+            },
+            {
+                "email": "swayam@nexus.ai",
+                "full_name": "Swayam",
+                "is_vegetarian": False,
+                "is_vegan": False,
+                "spice_tolerance": 4,
+                "allergies": [],
+                "fav_cuisines": ["Continental", "Asian"],
+                "disliked_ingredients": [],
             },
             {
                 "email": "priya@nexus.ai",
@@ -252,13 +286,23 @@ def seed_demo_users() -> None:
                 "disliked_ingredients": ["capsicum"],
             },
             {
-                "email": "alex@nexus.ai",
-                "full_name": "Alex Mercer",
+                "email": "kabir@nexus.ai",
+                "full_name": "Kabir",
                 "is_vegetarian": False,
                 "is_vegan": False,
                 "spice_tolerance": 5,
                 "allergies": [],
-                "fav_cuisines": ["Italian", "Mexican"],
+                "fav_cuisines": ["North Indian", "Mughlai"],
+                "disliked_ingredients": [],
+            },
+            {
+                "email": "ananya@nexus.ai",
+                "full_name": "Ananya",
+                "is_vegetarian": True,
+                "is_vegan": True,
+                "spice_tolerance": 2,
+                "allergies": ["lactose"],
+                "fav_cuisines": ["Asian", "South Indian"],
                 "disliked_ingredients": [],
             },
         ]
@@ -282,6 +326,62 @@ def seed_demo_users() -> None:
         db.commit()
     finally:
         db.close()
+
+
+_EXTRA_GUESTS = [
+    ("aryan@nexus.ai", "Aryan", 1, 0, 4, '["peanuts"]', '["Italian", "North Indian"]', '["mushrooms"]'),
+    ("himali@nexus.ai", "Himali", 1, 0, 2, "[]", '["South Indian", "Asian"]', "[]"),
+    ("siya@nexus.ai", "Siya", 1, 0, 3, "[]", '["North Indian", "Continental"]', '["mushroom"]'),
+    ("swayam@nexus.ai", "Swayam", 0, 0, 4, "[]", '["Continental", "Asian"]', "[]"),
+    ("kabir@nexus.ai", "Kabir", 0, 0, 5, "[]", '["North Indian", "Mughlai"]', "[]"),
+    ("ananya@nexus.ai", "Ananya", 1, 1, 2, '["lactose"]', '["Asian", "South Indian"]', "[]"),
+    ("rohan@nexus.ai", "Rohan", 0, 0, 4, "[]", '["Italian", "Continental"]', "[]"),
+    ("meera@nexus.ai", "Meera", 1, 0, 3, "[]", '["Gujarati", "North Indian"]', "[]"),
+]
+
+
+def ensure_night_out_guests() -> None:
+    """Idempotent: add Aryan/Himali/Siya/Swayam and friends to Taste Vault."""
+    if HAS_SQLALCHEMY and SessionLocal:
+        db = SessionLocal()
+        try:
+            for email, name, is_veg, is_vegan, spice, alg, cuis, dis in _EXTRA_GUESTS:
+                if db.query(User).filter(User.email == email).first():
+                    continue
+                u = User(email=email, full_name=name)
+                db.add(u)
+                db.flush()
+                dp = DietaryProfile(
+                    user_id=u.id,
+                    is_vegetarian=bool(is_veg),
+                    is_vegan=bool(is_vegan),
+                    spice_tolerance=spice,
+                )
+                dp.allergies = json.loads(alg)
+                dp.fav_cuisines = json.loads(cuis)
+                dp.disliked_ingredients = json.loads(dis)
+                db.add(dp)
+            db.commit()
+        finally:
+            db.close()
+        return
+
+    with sqlite3.connect(DB_FILE) as conn:
+        for email, name, is_veg, is_vegan, spice, alg, cuis, dis in _EXTRA_GUESTS:
+            row = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+            if row:
+                continue
+            cur = conn.execute("INSERT INTO users (email, full_name) VALUES (?, ?)", (email, name))
+            uid = cur.lastrowid
+            conn.execute(
+                """
+                INSERT INTO dietary_profiles
+                (user_id, is_vegetarian, is_vegan, spice_tolerance, allergies_json, fav_cuisines_json, disliked_ingredients_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (uid, is_veg, is_vegan, spice, alg, cuis, dis),
+            )
+        conn.commit()
 
 
 init_db()

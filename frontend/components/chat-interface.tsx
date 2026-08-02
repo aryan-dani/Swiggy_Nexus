@@ -16,6 +16,7 @@ import {
   captionForMethod,
   DemoDirector,
   DemoSummaryCard,
+  advanceDemoStep,
   stepFromToolMethod,
   type DemoStepId,
 } from "@/components/demo-director";
@@ -76,7 +77,7 @@ export type ChatInterfaceProps = {
   demoSettings: NexusDemoSettings;
   onDemoSettingsChange: (next: NexusDemoSettings) => void;
   onResetSession?: () => void;
-  onRunWow?: (scenario: NexusReviewerScenario, prompt: string) => void;
+  onRunWow?: (scenario: NexusReviewerScenario, prompt: string, variant?: import("@/lib/wow-variants").WowVariant) => void;
   onOpenConcierge?: () => void;
   onPickScenario?: (scenario: NexusReviewerScenario, prompt: string) => void;
 };
@@ -164,8 +165,9 @@ export default function ChatInterface({
 
       const chronoMode =
         chatContext?.scenario === "chrono_host" ||
-        text.toLowerCase().includes("evening") ||
-        text.toLowerCase().includes("12 guests");
+        /evening|housewarming|team dinner|date-night|date night|festive dinner|plan my|baner hangout/i.test(
+          text
+        );
       setShowDirector(Boolean(chronoMode));
       setDemoStep(chronoMode ? "plan" : null);
       setDemoCaption(chronoMode ? "Reading intent and picking verticals…" : "");
@@ -184,8 +186,8 @@ export default function ChatInterface({
           setThinking((t) => [...t, ev.payload.text]);
           setStreamPreview(ev.payload.text);
           if (chronoMode && !sawBundle) {
-            setDemoStep("plan");
-            setDemoCaption(ev.payload.text.slice(0, 80));
+            // Caption only — tools advance the Demo Director step (avoids skip-ahead).
+            setDemoCaption(ev.payload.text.slice(0, 90));
           }
         }
         if (ev.type === "tool") {
@@ -206,7 +208,7 @@ export default function ChatInterface({
           if (chronoMode) {
             const step = stepFromToolMethod(method);
             if (step) {
-              setDemoStep(step);
+              setDemoStep((prev) => advanceDemoStep(prev, step) ?? step);
               setDemoCaption(captionForMethod(method));
             }
           }
@@ -312,8 +314,8 @@ export default function ChatInterface({
 
         {empty && onRunWow && onOpenConcierge && onPickScenario ? (
           <ChatHero
-            onRunWow={(scenario, prompt) => {
-              onRunWow(scenario, prompt);
+            onRunWow={(scenario, prompt, variant) => {
+              onRunWow(scenario, prompt, variant);
               setInput(prompt);
               window.setTimeout(() => {
                 void runSendRef.current(prompt);

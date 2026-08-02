@@ -1,10 +1,20 @@
 import type { FeedItem } from "@/lib/api";
 import type { NexusCardResult } from "@/components/nexus-result-card";
+import { demoImageUrl } from "@/lib/wow-variants";
 
-/** Bundled under `public/images/demo` — works offline / no hotlink blocks. */
+/** Local SVG fallbacks if picsum is blocked offline. */
 const FOOD_IMG = "/images/demo/food.svg";
 const MART_IMG = "/images/demo/grocery.svg";
 const DINE_IMG = "/images/demo/dineout.svg";
+
+function seedImage(kind: string, title: string, fallback: string): string {
+  const seed = `${kind}-${title || "nexus"}`.slice(0, 64);
+  try {
+    return demoImageUrl(seed);
+  } catch {
+    return fallback;
+  }
+}
 
 export function mapFeedItemToNexusCard(
   item: FeedItem,
@@ -26,7 +36,7 @@ export function mapFeedItemToNexusCard(
       rating,
       time: eta != null ? `~${eta} min` : undefined,
       price: undefined,
-      imageUrl: FOOD_IMG,
+      imageUrl: seedImage("food", item.title, FOOD_IMG),
       meta: item.meta,
     };
   }
@@ -41,7 +51,7 @@ export function mapFeedItemToNexusCard(
       rating: 4.5,
       price: price != null ? `₹${price}` : undefined,
       items: undefined,
-      imageUrl: MART_IMG,
+      imageUrl: seedImage("im", item.title, MART_IMG),
       meta: item.meta,
     };
   }
@@ -57,7 +67,7 @@ export function mapFeedItemToNexusCard(
       offer: item.subtitle?.includes("Available")
         ? "Slots open"
         : undefined,
-      imageUrl: DINE_IMG,
+      imageUrl: seedImage("dine", item.title, DINE_IMG),
       meta: item.meta,
     };
   }
@@ -70,7 +80,7 @@ export function mapFeedItemToNexusCard(
       description: item.subtitle || "Table window",
       rating: undefined,
       time: (item.meta?.time as string) || undefined,
-      imageUrl: DINE_IMG,
+      imageUrl: seedImage("slot", item.title, DINE_IMG),
     };
   }
 
@@ -82,7 +92,7 @@ export function mapFeedItemToNexusCard(
       description: item.subtitle || "Promo / cross-vertical cue",
       rating: undefined,
       offer: "Agent-suggested route (demo)",
-      imageUrl: FOOD_IMG,
+      imageUrl: seedImage("deal", item.title, FOOD_IMG),
     };
   }
 
@@ -94,7 +104,7 @@ export function mapFeedItemToNexusCard(
       description: item.subtitle || "Join link",
       rating: undefined,
       offer: "One-tap RSVP (mock)",
-      imageUrl: DINE_IMG,
+      imageUrl: seedImage("join", item.title, DINE_IMG),
     };
   }
 
@@ -106,7 +116,7 @@ export function mapFeedItemToNexusCard(
       description: item.subtitle || "Multi-vertical evening plan",
       rating: undefined,
       offer: "Dineout + Instamart + Food",
-      imageUrl: DINE_IMG,
+      imageUrl: seedImage("bundle", item.title, DINE_IMG),
     };
   }
 
@@ -119,6 +129,6 @@ export function mapFeedItemToNexusCard(
     type: "food",
     title: item.title,
     description: item.subtitle || "",
-    imageUrl: FOOD_IMG,
+    imageUrl: seedImage("misc", item.title, FOOD_IMG),
   };
 }

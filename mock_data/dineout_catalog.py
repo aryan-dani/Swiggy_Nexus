@@ -11,6 +11,7 @@ DINEOUT_RESTAURANTS: list[dict] = [
     {"restaurant_id": "do_social_805", "name": "Social · FC Road", "rating": 4.3, "cuisines": ["Continental", "Bar"], "area": "FC Road", "price_for_two_inr": 1500, "costForTwo": 1500, "availability": "AVAILABLE", "_lat": 18.5244, "_lng": 73.8410},
     {"restaurant_id": "do_peshwa_806", "name": "Peshwa Pavilion", "rating": 4.7, "cuisines": ["Maharashtrian", "Fine Dining"], "area": "Koregaon Park", "price_for_two_inr": 4500, "costForTwo": 4500, "availability": "AVAILABLE", "_lat": 18.5340, "_lng": 73.8980},
     {"restaurant_id": "do_baoli_807", "name": "Baoli · SB Road", "rating": 4.4, "cuisines": ["North Indian", "Mughlai"], "area": "SB Road", "price_for_two_inr": 2800, "costForTwo": 2800, "availability": "AVAILABLE", "_lat": 18.5280, "_lng": 73.8320},
+    {"restaurant_id": "do_6digs_809", "name": "6 Digs · Kothrud", "rating": 4.5, "cuisines": ["Continental", "Asian", "Bar"], "area": "Kothrud", "price_for_two_inr": 2200, "costForTwo": 2200, "availability": "AVAILABLE", "_lat": 18.5074, "_lng": 73.8077},
     {"restaurant_id": "do_unavail_808", "name": "Rooftop Lounge (Walk-in only)", "rating": 4.2, "cuisines": ["Continental"], "area": "Baner", "price_for_two_inr": 2000, "costForTwo": 2000, "availability": "UNAVAILABLE", "_lat": 18.5600, "_lng": 73.7800},
 ]
 

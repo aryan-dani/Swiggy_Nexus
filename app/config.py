@@ -24,11 +24,14 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = Field(default="")
     GROQ_MODEL: str = Field(default="llama-3.3-70b-versatile")
 
-    # Conversational agent brain. "auto" prefers Gemini and falls back to Groq.
-    LLM_PROVIDER: Literal["auto", "gemini", "groq"] = Field(default="auto")
+    # Conversational agent brain. "auto" = Gemini then Groq. Use "ollama" for local rehearsal.
+    LLM_PROVIDER: Literal["auto", "gemini", "groq", "ollama"] = Field(default="auto")
     GEMINI_API_KEY: str = Field(default="")
     # Cheap tool-loop default; override with GEMINI_MODEL=gemini-3.6-flash if needed.
     GEMINI_MODEL: str = Field(default="gemini-3.5-flash-lite")
+
+    OLLAMA_BASE_URL: str = Field(default="http://127.0.0.1:11434")
+    OLLAMA_MODEL: str = Field(default="qwen2.5:7b-instruct")
 
     DATABASE_URL: str = Field(default="sqlite:///./nexus_memory.db")
 
@@ -45,6 +48,9 @@ class Settings(BaseSettings):
     GOOGLE_CALENDAR_TOKEN_PATH: str = Field(default="credentials/google_token.json")
     GOOGLE_PUBSUB_VERIFICATION_TOKEN: str = Field(default="nexus-pubsub-secret-token")
     PRIMARY_CALENDAR_ID: str = Field(default="primary")
+    # False = night-out fails loudly when OAuth is dead (preferred for real demos).
+    # Tests / offline CI can set GOOGLE_CALENDAR_ALLOW_MOCK=true.
+    GOOGLE_CALENDAR_ALLOW_MOCK: bool = Field(default=False)
 
     NOTIFICATION_PLATFORM: Literal["discord", "telegram", "slack", "console"] = Field(
         default="console"
@@ -52,6 +58,8 @@ class Settings(BaseSettings):
     DISCORD_WEBHOOK_URL: str = Field(default="")
     TELEGRAM_BOT_TOKEN: str = Field(default="")
     TELEGRAM_CHAT_ID: str = Field(default="")
+    # False = force console for unsolicited Telegram HITL/QoL pushes (inbound replies stay active).
+    TELEGRAM_OUTBOUND_ENABLED: bool = Field(default=True)
     SLACK_WEBHOOK_URL: str = Field(default="")
 
     OPENWEATHER_API_KEY: str = Field(default="")

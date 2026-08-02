@@ -61,6 +61,48 @@ def test_reject_marks_rejected():
     assert get_approval(rid)["status"] == "REJECTED"
 
 
+def test_reject_calendar_without_checkpoint_does_not_spawn_new_hitl(monkeypatch):
+    """Reject must not restart the concierge graph when MemorySaver has no interrupt."""
+    from app.db.store import list_approvals
+    from app.services import notifications as notif
+
+    sends: list[str] = []
+
+    async def _capture(*_a, **kwargs):
+        sends.append(str(kwargs.get("request_id") or ""))
+        return True
+
+    monkeypatch.setattr(notif, "send_approval_request", _capture)
+
+    approval = create_approval(
+        event_id="hitl-orphan-reject",
+        thread_id="hitl-orphan-reject",
+        trigger_type="calendar_concierge",
+        title="Orphan checkpoint",
+        summary="reject me",
+        cost_breakdown={"mode": "DINEOUT", "total_inr": 2800},
+        staged_payload={"mode": "DINEOUT", "dineout_plan": {}},
+    )
+    rid = approval["request_id"]
+    before = {a["request_id"] for a in list_approvals(status=None, limit=200)}
+
+    res = client.post(f"/api/hitl/reject/{rid}")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "REJECTED"
+    assert get_approval(rid)["status"] == "REJECTED"
+    # final_state must not be a fresh graph run that minted another REQ
+    final = body.get("final_state") or {}
+    assert final.get("approval_request_id") in (None, rid)
+    assert final.get("resume") in ("no_interrupt", "no_checkpoint", None) or final.get(
+        "approval_status"
+    ) == "REJECTED"
+
+    after = {a["request_id"] for a in list_approvals(status=None, limit=200)}
+    assert after == before  # no fresh REQ-* minted on reject
+    assert sends == []  # no Telegram/console HITL spam
+
+
 def test_approvals_list():
     create_approval(
         event_id="hitl-test-3",

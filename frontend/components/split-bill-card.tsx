@@ -16,7 +16,7 @@ type Share = {
   upi_link: string;
 };
 
-const DEMO_ATTENDEES = ["dani@nexus.ai", "priya@nexus.ai", "alex@nexus.ai"];
+const DEMO_ATTENDEES = ["aryan@nexus.ai", "himali@nexus.ai", "siya@nexus.ai"];
 
 /** BHIM-style equal split (Nexus extension) — shares + mock UPI links. */
 export function SplitBillButton({

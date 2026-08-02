@@ -143,6 +143,34 @@ def create_approval(
     return row
 
 
+def find_pending_approval(
+    event_id: str,
+    trigger_type: str | None = None,
+) -> dict[str, Any] | None:
+    """Newest PENDING approval for event_id, optionally scoped by trigger_type."""
+    with _connect() as conn:
+        if trigger_type:
+            cur = conn.execute(
+                """
+                SELECT * FROM approval_requests
+                WHERE event_id = ? AND status = 'PENDING' AND trigger_type = ?
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                (event_id, trigger_type),
+            )
+        else:
+            cur = conn.execute(
+                """
+                SELECT * FROM approval_requests
+                WHERE event_id = ? AND status = 'PENDING'
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                (event_id,),
+            )
+        row = cur.fetchone()
+    return _approval_row(row) if row else None
+
+
 def get_approval(request_id: str) -> dict[str, Any] | None:
     with _connect() as conn:
         cur = conn.execute(

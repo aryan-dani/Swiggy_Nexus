@@ -1,11 +1,39 @@
 """Shared pytest fixtures for Swiggy Nexus tests."""
 from __future__ import annotations
 
-import os
+import httpx
 import pytest
 
 # Ensure we can import from the project root
 # (pytest.ini / pyproject.toml should set rootdir correctly)
+
+
+@pytest.fixture(autouse=True)
+def mute_telegram_outbound(monkeypatch):
+    """Never push live Telegram HITL/QoL from pytest (belt-and-suspenders)."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "NOTIFICATION_PLATFORM", "console")
+    monkeypatch.setattr(settings, "TELEGRAM_CHAT_ID", "")
+
+    async def _noop_approval(*_args, **_kwargs) -> bool:
+        return True
+
+    monkeypatch.setattr(
+        "app.services.notifications.send_approval_request",
+        _noop_approval,
+    )
+
+    _real_post = httpx.AsyncClient.post
+
+    async def _block_telegram_post(self, url, *args, **kwargs):
+        if "api.telegram.org" in str(url):
+            resp = httpx.Response(200, json={"ok": True, "result": {}})
+            return resp
+        return await _real_post(self, url, *args, **kwargs)
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", _block_telegram_post)
+    yield
 
 
 @pytest.fixture(autouse=True)

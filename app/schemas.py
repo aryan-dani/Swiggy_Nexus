@@ -151,7 +151,7 @@ class ManualTriggerBody(BaseModel):
     event_time: str = Field(default="2026-07-26T19:00:00+05:30")
     event_location: str = Field(default="Home", examples=["Home or Bistro"])
     attendee_emails: list[str] = Field(
-        default_factory=lambda: ["dani@nexus.ai", "priya@nexus.ai"]
+        default_factory=lambda: ["aryan@nexus.ai", "himali@nexus.ai"]
     )
     description: str = Field(
         default="Social outing #swiggy",

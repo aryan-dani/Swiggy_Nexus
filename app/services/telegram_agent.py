@@ -24,7 +24,8 @@ from app.services.llm import (
     active_provider_label,
     run_tool_conversation,
 )
-from backend.memory import get_conversation_history, save_turn
+from backend.tool_schemas import TELEGRAM_TOOLS_FOR_LLM
+from app.services.night_out import plan_dinner_party, plan_night_out
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +60,8 @@ _TOOL_CAPTIONS = {
     "food_place_order": "Staging food order for approval",
     "im_checkout": "Staging Instamart checkout for approval",
     "dineout_book_table": "Staging table booking for approval",
+    "nexus_plan_night_out": "Planning night out (Calendar + table + split)",
+    "nexus_plan_dinner_party": "Planning dinner party (Calendar + food + split)",
 }
 
 
@@ -68,9 +71,13 @@ def _system_prompt() -> str:
         "Texting style: under 6 short lines, plain text, prices like 249 INR.\n"
         "Never invent IDs — copy restaurantId/itemId/spinId from tool results only.\n"
         f"Default address {settings.DEFAULT_ADDRESS_ID}; skip get_addresses unless asked.\n"
+        "Friends + restaurant + book table + split → call nexus_plan_night_out ONLY when "
+        "the user already named guests AND a restaurant AND a time; otherwise tell them "
+        "to use /nightout (guided wizard) — never invent 6 Digs or a default slot.\n"
+        "Hosting at home + order food + split → nexus_plan_dinner_party.\n"
         "Dish orders → food_search_menu → add_to_cart → food_place_order. "
-        "Groceries → search → add → im_checkout. Table → search → availability → book_table.\n"
-        "place_order / checkout / book_table only STAGE for Approve — never say ordered.\n"
+        "Groceries → search → add → im_checkout. Table alone → search → availability → book_table.\n"
+        "place_order / checkout / book_table / nexus_plan_* only STAGE for Approve — never say ordered.\n"
         "Instamart min 99 INR; food cart max 1000 INR. No cancel API — 080-67466729.\n"
         "Mock MCP demo: real tool names, synthetic catalog."
     )
@@ -359,6 +366,77 @@ async def run_telegram_agent(chat_id: Any, text: str, *, source: str = "text") -
         )
 
     async def execute_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
+        if name == "nexus_plan_night_out":
+            guests = args.get("guests") or args.get("guest_names") or []
+            if isinstance(guests, str):
+                guests = [g.strip() for g in guests.replace(" and ", ",").split(",") if g.strip()]
+            venue = str(args.get("venue") or "").strip()
+            slot = str(args.get("slot") or args.get("preferred_slot") or "").strip()
+            start_iso = args.get("start_iso")
+            # Incomplete → walk the user through the wizard instead of inventing 6 Digs.
+            if not venue or (not slot and not start_iso):
+                from app.services.telegram_night_out import begin_night_out_wizard
+
+                await begin_night_out_wizard(
+                    chat_id,
+                    hint="Let's plan this properly — I'll ask guests, restaurant, then time.",
+                )
+                return {HALT_KEY: True, "status": "wizard_started"}
+            result = await plan_night_out(
+                guest_names=list(guests),
+                venue=venue,
+                venue_query=str(args.get("venue_query") or venue),
+                guest_count=args.get("guest_count"),
+                start_iso=str(start_iso) if start_iso else None,
+                preferred_slot=slot or None,
+            )
+            result[HALT_KEY] = True
+            rid = result.get("approval_request_id")
+            if rid:
+                await _send(
+                    chat_id,
+                    f"⏸ Night out staged\n"
+                    f"{result.get('venue')} · {result.get('guest_count')} guests"
+                    f"{(' · ' + slot) if slot else ''}\n"
+                    f"Calendar + table ready. Approve in Concierge or tap below.\n"
+                    f"({rid})",
+                    reply_markup={
+                        "inline_keyboard": [
+                            [
+                                {"text": "✅ Approve", "callback_data": f"approve:{rid}"},
+                                {"text": "❌ Reject", "callback_data": f"reject:{rid}"},
+                            ]
+                        ]
+                    },
+                )
+            return result
+        if name == "nexus_plan_dinner_party":
+            guests = args.get("guests") or []
+            if isinstance(guests, str):
+                guests = [g.strip() for g in guests.replace(" and ", ",").split(",") if g.strip()]
+            result = await plan_dinner_party(
+                guest_names=list(guests),
+                dish_query=str(args.get("dish_query") or "paneer biryani"),
+                guest_count=args.get("guest_count"),
+            )
+            result[HALT_KEY] = True
+            rid = result.get("approval_request_id")
+            if rid:
+                await _send(
+                    chat_id,
+                    f"⏸ Dinner party staged\n"
+                    f"{result.get('guest_count')} guests · Approve to order + split\n"
+                    f"({rid})",
+                    reply_markup={
+                        "inline_keyboard": [
+                            [
+                                {"text": "✅ Approve", "callback_data": f"approve:{rid}"},
+                                {"text": "❌ Reject", "callback_data": f"reject:{rid}"},
+                            ]
+                        ]
+                    },
+                )
+            return result
         if name in WRITE_TOOLS:
             return await _stage_write_tool(chat_id, name, args)
         vertical, method = _split_tool(name)
@@ -384,6 +462,7 @@ async def run_telegram_agent(chat_id: Any, text: str, *, source: str = "text") -
             history=history,
             on_tool_start=on_tool_start,
             max_rounds=MAX_TOOL_ROUNDS,
+            tools=TELEGRAM_TOOLS_FOR_LLM,
         )
     except LLMUnavailable as e:
         await _edit(chat_id, status_id, f"⚠️ {e}")

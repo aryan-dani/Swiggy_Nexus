@@ -11,10 +11,10 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from app.config import settings
-from app.db.store import decide_approval, get_approval, list_approvals, record_qol_event
-from app.graph.workflow import concierge_graph
+from app.db.store import list_approvals
 from app.schemas import ApprovalBody
 from app.services import qol_triggers
+from app.services.hitl_decisions import HitlNotFoundError, process_decision
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["hitl"])
@@ -22,66 +22,12 @@ router = APIRouter(tags=["hitl"])
 _poll_task: asyncio.Task[None] | None = None
 
 
-async def _resume_graph(thread_id: str, approved: bool, approval: dict[str, Any]) -> dict[str, Any]:
-    config = {"configurable": {"thread_id": thread_id}}
-    try:
-        await concierge_graph.aupdate_state(
-            config,
-            {"approval_status": "APPROVED" if approved else "REJECTED"},
-        )
-        final = await concierge_graph.ainvoke(None, config=config)
-        return final or {}
-    except Exception as e:  # noqa: BLE001
-        log.warning("Graph resume failed for %s: %s — fallback staged execution", thread_id, e)
-        if not approved:
-            return {"approval_status": "REJECTED"}
-        result = await qol_triggers.execute_staged_approval(approval)
-        return {"approval_status": "APPROVED", "fallback_execution": result}
-
-
 async def _process_decision(request_id: str, approved: bool) -> dict[str, Any]:
-    approval = get_approval(request_id)
-    if not approval:
-        raise HTTPException(status_code=404, detail=f"Unknown approval '{request_id}'")
-    if approval["status"] != "PENDING":
-        return {"status": approval["status"], "approval": approval, "note": "already decided"}
-
-    updated = decide_approval(request_id, approved)
-    trigger = (updated or approval).get("trigger_type") or "calendar_concierge"
-
-    if trigger == "calendar_concierge":
-        final = await _resume_graph(approval["thread_id"], approved, updated or approval)
-        record_qol_event(
-            kind="hitl_approved" if approved else "hitl_rejected",
-            title=f"{'Approved' if approved else 'Rejected'} · {request_id}",
-            detail=trigger,
-            severity="info",
-            event_id=approval["event_id"],
-        )
-        return {
-            "status": "COMPLETED" if approved else "REJECTED",
-            "approval": updated,
-            "final_state": final,
-        }
-
-    if not approved:
-        record_qol_event(
-            kind="hitl_rejected",
-            title=f"Rejected · {request_id}",
-            detail=trigger,
-            severity="warn",
-        )
-        return {"status": "REJECTED", "approval": updated}
-
-    result = await qol_triggers.execute_staged_approval(updated or approval)
-    record_qol_event(
-        kind="hitl_approved",
-        title=f"Approved · {request_id}",
-        detail=trigger,
-        severity="info",
-        meta=result,
-    )
-    return {"status": "COMPLETED", "approval": updated, "execution": result}
+    """Router wrapper — maps HitlNotFoundError to HTTP 404."""
+    try:
+        return await process_decision(request_id, approved)
+    except HitlNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 def _html_result(title: str, body: str, ok: bool) -> HTMLResponse:
@@ -165,11 +111,17 @@ async def process_telegram_update(data: dict[str, Any]) -> dict[str, str]:
             "Swiggy Nexus concierge.\n"
             "Just talk to me normally — 'order paneer biryani', 'book a table for 4 "
             "tonight', 'get milk and bread'. Voice notes work too.\n"
+            "Night out: /nightout — I'll walk you through guests → restaurant → time.\n"
             "I stage everything and wait for your Approve tap before spending.\n"
             f"Brain: {active_provider_label()}\n"
-            "Commands: /status · /guests 6 · /fuel · /approve REQ-… · /reject REQ-…",
+            "Commands: /nightout · /status · /guests 6 · /fuel · /approve REQ-… · /reject REQ-…",
         )
         return {"ok": "help"}
+    if text.startswith("/nightout") or text.startswith("/night_out"):
+        from app.services.telegram_night_out import begin_night_out_wizard
+
+        await begin_night_out_wizard(chat_id)
+        return {"ok": "nightout"}
     if text.startswith("/status"):
         pending = list_approvals("PENDING")
         await _telegram_reply(
@@ -209,6 +161,13 @@ async def process_telegram_update(data: dict[str, Any]) -> dict[str, str]:
         await _telegram_reply(chat_id, f'🎙 "{transcript}"')
         await run_telegram_agent(chat_id, transcript, source="voice")
         return {"ok": "voice"}
+
+    # Night-out wizard venue typing (before free-form agent)
+    if text and chat_id and not text.startswith("/"):
+        from app.services.telegram_night_out import handle_venue_text
+
+        if await handle_venue_text(chat_id, text):
+            return {"ok": "nightout_venue_text"}
 
     # Anything else that is not a slash command goes to the LLM agent.
     if text and chat_id and not text.startswith("/"):
@@ -251,6 +210,16 @@ async def process_telegram_update(data: dict[str, Any]) -> dict[str, str]:
 
     if cq_id:
         await _answer_callback(cq_id)
+
+    if cb.startswith("now:"):
+        from app.services.telegram_night_out import handle_night_out_callback
+
+        await handle_night_out_callback(
+            cq_chat,
+            cb,
+            message_id=int(cq_mid) if cq_mid is not None else None,
+        )
+        return {"ok": "nightout_cb"}
 
     if cb.startswith("qol:rooftop:"):
         await qol_triggers.handle_rooftop_choice(cb.split(":")[-1])

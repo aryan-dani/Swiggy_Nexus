@@ -38,9 +38,15 @@ def check_dineout_success(state: ConciergeState) -> Literal["ai_sommelier", "sta
 
 
 def route_after_resume(state: ConciergeState) -> Literal["execute_transactions", "cleanup_reject"]:
-    if state.get("approval_status") == "REJECTED":
+    status = state.get("approval_status")
+    if status == "REJECTED":
         return "cleanup_reject"
-    return "execute_transactions"
+    if status == "APPROVED":
+        return "execute_transactions"
+    # Still PENDING (should not reach here after a proper interrupt resume) —
+    # never execute writes without an explicit approve.
+    log.warning("route_after_resume with status=%s — treating as reject", status)
+    return "cleanup_reject"
 
 
 def _build_checkpointer() -> Any:

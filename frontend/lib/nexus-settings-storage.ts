@@ -1,3 +1,5 @@
+import { loadWowVariant, wowEventFromVariant } from "@/lib/wow-variants";
+
 const KEY = "nexus-demo-settings-v1";
 
 /** Reviewer presets for Swiggy credential pitch demos (frontend-only mocks). */
@@ -105,6 +107,23 @@ function parse(raw: string | null): NexusDemoSettings {
 export function orchestrationContextFromSettings(
   s: NexusDemoSettings
 ): Record<string, unknown> {
+  let chronoEvent: Record<string, unknown> | undefined;
+  if (s.reviewerScenario === "chrono_host") {
+    const variant = loadWowVariant();
+    chronoEvent = variant
+      ? wowEventFromVariant(variant)
+      : {
+          title: "Housewarming Saturday",
+          start: "2026-08-02T19:00:00+05:30",
+          end: "2026-08-02T23:00:00+05:30",
+          guests: 12,
+          cuisineHint: "italian",
+          dessertQuery: "gelato",
+          imQuery: "party plates napkins drinks",
+          playlistKey: "housewarming",
+        };
+  }
+
   return {
     signals: {
       deepWorkBlock: s.signalDeepWorkBlock,
@@ -117,16 +136,7 @@ export function orchestrationContextFromSettings(
     budgetInr: s.deadlockBudgetInr,
     city: s.deadlockCity,
     recipeHint: s.zerowasteRecipeHint,
-    event:
-      s.reviewerScenario === "chrono_host"
-        ? {
-            title: "Housewarming Saturday",
-            start: "2026-07-12T19:00:00+05:30",
-            end: "2026-07-12T23:00:00+05:30",
-            guests: 12,
-            cuisineHint: "italian",
-          }
-        : undefined,
+    event: chronoEvent,
   };
 }
 

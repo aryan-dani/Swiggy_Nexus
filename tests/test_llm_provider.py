@@ -49,8 +49,75 @@ def test_provider_resolution(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(s, "LLM_PROVIDER", "groq")
     assert llm_mod._resolve_provider()[0] == "none"  # groq forced but unavailable
 
+    monkeypatch.setattr(s, "LLM_PROVIDER", "ollama")
+    monkeypatch.setattr(s, "OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+    monkeypatch.setattr(s, "OLLAMA_MODEL", "qwen2.5:7b-instruct")
+    monkeypatch.setattr(s, "GEMINI_API_KEY", "gem")  # must not win over explicit ollama
+    assert llm_mod._resolve_provider() == ("ollama", "qwen2.5:7b-instruct")
+    assert "Ollama" in llm_mod.active_provider_label()
+
+
+def test_ollama_loop_does_not_call_gemini_or_groq(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(llm_mod.settings, "LLM_PROVIDER", "ollama")
+    monkeypatch.setattr(llm_mod.settings, "OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+    monkeypatch.setattr(llm_mod.settings, "OLLAMA_MODEL", "qwen2.5:7b-instruct")
+    monkeypatch.setattr(llm_mod.settings, "GEMINI_API_KEY", "gem")
+    monkeypatch.setattr(llm_mod.settings, "GROQ_API_KEY", "grq")
+
+    async def boom_gemini(**kwargs):  # pragma: no cover
+        raise AssertionError("Gemini must not run when LLM_PROVIDER=ollama")
+
+    async def boom_groq(**kwargs):  # pragma: no cover
+        raise AssertionError("Groq must not run when LLM_PROVIDER=ollama")
+
+    async def fake_ollama(**kwargs):
+        return llm_mod.LLMResult(text="from ollama", provider="ollama", model="qwen2.5:7b-instruct")
+
+    monkeypatch.setattr(llm_mod, "_run_gemini", boom_gemini)
+    monkeypatch.setattr(llm_mod, "_run_groq", boom_groq)
+    monkeypatch.setattr(llm_mod, "_run_ollama", fake_ollama)
+
+    async def never(name, args):  # pragma: no cover
+        raise AssertionError("tool should not run")
+
+    result = _run(
+        llm_mod.run_tool_conversation(
+            system_prompt="x", user_message="hi", execute_tool=never
+        )
+    )
+    assert result.provider == "ollama"
+    assert result.text == "from ollama"
+
+
+def test_ollama_failure_does_not_fall_through_to_gemini(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(llm_mod.settings, "LLM_PROVIDER", "ollama")
+    monkeypatch.setattr(llm_mod.settings, "OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+    monkeypatch.setattr(llm_mod.settings, "OLLAMA_MODEL", "qwen2.5:7b-instruct")
+    monkeypatch.setattr(llm_mod.settings, "GEMINI_API_KEY", "gem")
+    monkeypatch.setattr(llm_mod.settings, "GROQ_API_KEY", "grq")
+
+    async def boom_ollama(**kwargs):
+        raise ConnectionError("connection refused")
+
+    async def boom_gemini(**kwargs):  # pragma: no cover
+        raise AssertionError("must not fall through to Gemini")
+
+    monkeypatch.setattr(llm_mod, "_run_ollama", boom_ollama)
+    monkeypatch.setattr(llm_mod, "_run_gemini", boom_gemini)
+
+    async def never(name, args):  # pragma: no cover
+        raise AssertionError("tool should not run")
+
+    with pytest.raises(llm_mod.LLMUnavailable, match="ollama serve"):
+        _run(
+            llm_mod.run_tool_conversation(
+                system_prompt="x", user_message="hi", execute_tool=never
+            )
+        )
+
 
 def test_no_provider_raises(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(llm_mod.settings, "LLM_PROVIDER", "auto")
     monkeypatch.setattr(llm_mod.settings, "GEMINI_API_KEY", "")
     monkeypatch.setattr(llm_mod.settings, "GROQ_API_KEY", "")
 

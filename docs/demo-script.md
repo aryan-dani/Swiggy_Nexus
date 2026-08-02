@@ -7,6 +7,52 @@ Never say “ordered” or “booked” until after you tap Approve / Confirm.
 
 ## BEFORE RECORD (do once, camera off)
 
+### Local rehearsal (no Gemini burn)
+
+Use Ollama so calendar / Telegram / WOW / bill-split practice does not hit Gemini quota.
+
+```powershell
+ollama serve   # if not already running
+ollama pull qwen2.5:7b-instruct   # once
+```
+
+In `backend/.env`:
+
+```
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=qwen2.5:7b-instruct
+```
+
+*(If tool calls are flaky, try `OLLAMA_MODEL=gemma3:12b` — same wire.)*
+
+Then start API + UI (below), and run:
+
+```powershell
+.\backend\.venv\Scripts\python.exe scripts\demo_preflight.py
+```
+
+All automated lines should say **PASS**. Then do the three manual steps the script prints (Telegram paneer order, WOW button, voice Reject).
+
+For the **final Builders Club take** with a Gemini footer on camera, switch back to `LLM_PROVIDER=auto` (and a working `GEMINI_API_KEY`) before recording.
+
+### Night out (Calendar + Maps + split)
+
+Fast path without Telegram:
+
+1. Concierge Ops → **Night out** (wizard: guests → venue → time)
+2. Pending card shows invitees (Aryan, Himali, Siya, Swayam) + Calendar / Maps links
+3. **Approve** → receipt card with Calendar link, Navigate (Maps), booking, equal UPI shares
+
+Telegram:
+
+> /nightout
+> (or) Schedule dinner with Himali, Siya and Swayam at 6 Digs Kothrud, book a table, split the bill equally
+
+Optional real Google Calendar invites: run `scripts/google_auth_setup.py` once so `create_calendar_event` inserts a live event (otherwise a mock `htmlLink` still renders for the visual). Watch channel is **not** required for this path.
+
+### Always
+
 1. Start API (no `--reload`):
 
 ```powershell
@@ -24,14 +70,13 @@ npm run build
 npm start
 ```
 
-3. Reset:
+3. Reset (or rely on `demo_preflight.py`, which resets for you):
 
 ```powershell
 curl.exe -X POST http://127.0.0.1:8000/internal/demo/reset -H "X-Nexus-Tick-Secret: nexus-tick-secret"
 ```
 
-Confirm `backend/.env` has `GEMINI_MODEL=gemini-3.5-flash-lite` (saves quota vs 3.6).  
-Check http://127.0.0.1:8000/api/concierge/agent → Gemini + `telegram_ready: true`.
+Check http://127.0.0.1:8000/api/concierge/agent → `ollama` (local) or Gemini (camera take) + `telegram_ready: true` when bot env is set.
 
 4. Open http://127.0.0.1:3000  
 5. Sidebar: turn **Developer mode OFF**  

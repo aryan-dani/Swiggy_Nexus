@@ -1,8 +1,15 @@
 "use client";
 
-import { ChevronDown, Music, ShoppingCart, X } from "lucide-react";
+import { ChevronDown, Loader2, Music, ShoppingCart, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import NexusResultCard, {
   type NexusCardResult,
@@ -18,6 +25,12 @@ import type { FeedItem } from "@/lib/api";
 import { mapFeedItemToNexusCard } from "@/lib/feed-mapper";
 import { nexusToast } from "@/lib/nexus-toast-bus";
 import { fadeUp, neoSpring, staggerContainer } from "@/lib/motion";
+import {
+  ALT_LISTINGS,
+  demoImageUrl,
+  loadWowVariant,
+  playlistForScenario,
+} from "@/lib/wow-variants";
 
 export type McpFeedProps = {
   items: FeedItem[];
@@ -32,27 +45,29 @@ export type McpFeedProps = {
   arenaSlot?: ReactNode;
 };
 
-const PLAYLIST = [
-  { t: "Khuloos · Talwiinder", vibe: "late-night delivery run" },
-  { t: "Starboy · The Weeknd", vibe: "dinner with the team" },
-  { t: "Magenta Riddim · DJ Snake", vibe: "spicy food energy" },
-  { t: "Cold/Mess · Anne-Marie", vibe: "grocery haul calm" },
-] as const;
-
 const SECTION_LABEL: Record<NexusCardResult["type"], string> = {
   dineout: "Dineout",
   grocery: "Instamart",
   food: "Food",
 };
 
-function bonusRowFromCards(base: NexusCardResult[], round: number): NexusCardResult[] {
-  return base.map((c, i) => ({
-    ...c,
-    id: `${c.id}-more-r${round}-${i}`,
-    title: `${c.title} · alt ${round}`,
-    description: "Nearby pick · synthetic listing",
-    offer: round % 2 === 0 ? "Demo ₹40 off" : undefined,
-  }));
+function bonusRowFromAlts(round: number): NexusCardResult[] {
+  const out: NexusCardResult[] = [];
+  (Object.keys(ALT_LISTINGS) as Array<keyof typeof ALT_LISTINGS>).forEach((type) => {
+    const pool = ALT_LISTINGS[type];
+    const pick = pool[(round - 1) % pool.length]!;
+    out.push({
+      id: `alt-${type}-r${round}`,
+      type,
+      title: pick.title,
+      description: pick.description,
+      price: pick.price,
+      offer: pick.offer ?? `Round ${round} pick`,
+      imageUrl: demoImageUrl(`${pick.imageSeed}-r${round}`),
+      rating: type === "dineout" ? 4.5 : 4.4,
+    });
+  });
+  return out;
 }
 
 export default function McpFeed({
@@ -83,9 +98,20 @@ export default function McpFeed({
   const hasContent = items.length > 0 || Boolean(arenaSlot);
 
   const [optionsRound, setOptionsRound] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [playlistOpen, setPlaylistOpen] = useState(false);
   const [compact, setCompact] = useState(compactFeed);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const extrasRef = useRef<HTMLDivElement | null>(null);
+  const itemsSig = useMemo(
+    () => items.map((i) => `${i.type}:${i.title}`).join("|"),
+    [items]
+  );
+
+  const playlist = useMemo(() => {
+    const v = loadWowVariant();
+    return playlistForScenario(activeScenario, v?.playlistKey);
+  }, [activeScenario, playlistOpen, itemsSig]);
 
   useEffect(() => {
     setCompact(compactFeed);
@@ -94,16 +120,17 @@ export default function McpFeed({
   useEffect(() => {
     setOptionsRound(0);
     setDetailsOpen(false);
-  }, [items]);
+    setLoadingMore(false);
+  }, [itemsSig]);
 
   const bonusCards = useMemo(() => {
     if (optionsRound <= 0) return [];
     const out: NexusCardResult[] = [];
     for (let r = 1; r <= optionsRound; r++) {
-      out.push(...bonusRowFromCards(cards, r));
+      out.push(...bonusRowFromAlts(r));
     }
     return out;
-  }, [cards, optionsRound]);
+  }, [optionsRound]);
 
   const displayCards = useMemo(() => [...cards, ...bonusCards], [cards, bonusCards]);
 
@@ -129,10 +156,18 @@ export default function McpFeed({
   }, [cards.length, displayCards.length]);
 
   const showMore = useCallback(() => {
-    if (cards.length === 0) return;
-    setOptionsRound((r) => Math.min(r + 1, 3));
-    nexusToast("Loaded alternate mock listings.");
-  }, [cards.length]);
+    if (cards.length === 0 || loadingMore || optionsRound >= 3) return;
+    setLoadingMore(true);
+    nexusToast("Scouting nearby alternates…");
+    window.setTimeout(() => {
+      setOptionsRound((r) => Math.min(r + 1, 3));
+      setLoadingMore(false);
+      window.setTimeout(() => {
+        extrasRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 80);
+      nexusToast("3 fresh listings dropped into the rail.");
+    }, 650);
+  }, [cards.length, loadingMore, optionsRound]);
 
   return (
     <div id="nexus-activity-rail" className="relative flex min-h-0 flex-col gap-4 pb-2">
@@ -255,7 +290,21 @@ export default function McpFeed({
                     </motion.div>
                   </div>
                 ))}
+                <div ref={extrasRef} className="h-px w-full" aria-hidden />
               </div>
+            )}
+
+            {loadingMore && (
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-2 rounded-lg border border-dashed border-indigo-300 bg-indigo-50 px-3 py-2"
+              >
+                <Loader2 className="h-4 w-4 animate-spin text-indigo-600" aria-hidden />
+                <p className="font-sans text-xs font-medium text-indigo-900">
+                  Loading nearby alternates…
+                </p>
+              </motion.div>
             )}
 
             {cards.length > 0 && (
@@ -277,11 +326,18 @@ export default function McpFeed({
                 <motion.button
                   variants={fadeUp}
                   type="button"
-                  className="rounded border border-black/20 bg-white px-3 py-2 font-display text-[10px] font-black uppercase tracking-wide text-black hover:bg-slate-50"
+                  className="inline-flex items-center gap-1.5 rounded border border-black/20 bg-white px-3 py-2 font-display text-[10px] font-black uppercase tracking-wide text-black hover:bg-slate-50 disabled:opacity-50"
                   onClick={showMore}
-                  disabled={optionsRound >= 3}
+                  disabled={optionsRound >= 3 || loadingMore}
                 >
-                  More options{optionsRound > 0 ? ` (${optionsRound})` : ""}
+                  {loadingMore ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  ) : null}
+                  {optionsRound >= 3
+                    ? "All options loaded"
+                    : loadingMore
+                      ? "Loading…"
+                      : `More options${optionsRound > 0 ? ` (${optionsRound})` : ""}`}
                 </motion.button>
                 <motion.button
                   variants={fadeUp}
@@ -329,10 +385,15 @@ export default function McpFeed({
                 <X className="h-4 w-4" />
               </button>
               <h3 className="nexus-section-title pr-8">Demo playlist</h3>
+              <p className="nexus-caption mt-1">
+                {loadWowVariant()?.title
+                  ? `Matched to ${loadWowVariant()?.title}`
+                  : "Vibe-matched for this run"}
+              </p>
               <ul className="mt-3 space-y-2">
-                {PLAYLIST.map((row, i) => (
+                {playlist.map((row, i) => (
                   <li
-                    key={row.t}
+                    key={`${row.t}-${i}`}
                     className="flex gap-3 rounded border border-black/10 bg-slate-50 px-3 py-2"
                   >
                     <span className="font-mono text-[10px] text-slate-400">

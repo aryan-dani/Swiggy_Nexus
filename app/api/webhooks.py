@@ -56,8 +56,9 @@ async def calendar_webhook(
         return {"status": "ok", "message": "Handshake successful"}
 
     expected = settings.GOOGLE_PUBSUB_VERIFICATION_TOKEN
-    if expected and x_goog_channel_token and x_goog_channel_token != expected:
-        raise HTTPException(status_code=403, detail="Invalid channel token")
+    if expected:
+        if not x_goog_channel_token or x_goog_channel_token != expected:
+            raise HTTPException(status_code=403, detail="Invalid or missing channel token")
 
     raw_body = await request.body()
     event_data: dict[str, Any] = {}
@@ -94,7 +95,7 @@ async def calendar_webhook(
 
     attendees = [a.get("email") for a in cal_event.get("attendees", []) if a.get("email")]
     if not attendees:
-        attendees = ["dani@nexus.ai", "priya@nexus.ai"]
+        attendees = ["aryan@nexus.ai", "himali@nexus.ai"]
 
     initial_state = {
         "event_id": event_id,
@@ -153,10 +154,13 @@ async def manual_trigger(body: ManualTriggerBody) -> dict[str, Any]:
 @router.post("/api/concierge/approve/{request_id}")
 async def approve_legacy(request_id: str, body: ApprovalBody | None = None) -> dict[str, Any]:
     """Back-compat wrapper → HITL approve."""
-    from app.api.hitl import _process_decision
+    from app.services.hitl_decisions import HitlNotFoundError, process_decision
 
     approved = True if body is None else body.approved
-    return await _process_decision(request_id, approved)
+    try:
+        return await process_decision(request_id, approved)
+    except HitlNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.get("/api/concierge/status/{event_id}")
@@ -261,6 +265,197 @@ def concierge_agent() -> dict[str, Any]:
     }
 
 
+class NightOutBody(BaseModel):
+    guests: list[str] = ["himali", "siya", "swayam"]
+    venue: str = "6 Digs · Kothrud"
+    guest_count: int | None = 4
+    start_iso: str | None = None
+    preferred_slot: str | None = None
+    preferred_slot_id: str | None = None
+
+
+class DinnerPartyBody(BaseModel):
+    guests: list[str] = ["himali", "siya", "swayam"]
+    dish_query: str = "paneer biryani"
+    guest_count: int | None = 4
+
+
+class WizardGuestsBody(BaseModel):
+    guests: list[str]
+
+
+class WizardVenueBody(BaseModel):
+    restaurant_id: str | None = None
+    name: str | None = None
+
+
+class WizardSlotBody(BaseModel):
+    slot: str
+    slot_id: str | int | None = None
+    start_iso: str | None = None
+
+
+@router.post("/api/concierge/night-out")
+async def concierge_night_out(body: NightOutBody) -> dict[str, Any]:
+    """Direct night-out (skips wizard) — prefer /wizard/* for demos."""
+    from fastapi import HTTPException
+
+    from app.services.google_calendar import CalendarAuthError
+    from app.services.night_out import plan_night_out
+
+    try:
+        return await plan_night_out(
+            guest_names=body.guests,
+            venue=body.venue,
+            venue_query="6 Digs" if "6 dig" in body.venue.lower() else body.venue,
+            guest_count=body.guest_count,
+            start_iso=body.start_iso,
+            preferred_slot=body.preferred_slot,
+            preferred_slot_id=body.preferred_slot_id,
+        )
+    except CalendarAuthError as e:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "calendar_auth",
+                "message": str(e),
+                "fix": "python scripts/google_auth_setup.py",
+            },
+        ) from e
+
+
+@router.post("/api/concierge/night-out/wizard/start")
+def night_out_wizard_start() -> dict[str, Any]:
+    from app.services.night_out_wizard import start_wizard
+
+    return start_wizard()
+
+
+@router.get("/api/concierge/night-out/wizard/{wizard_id}")
+def night_out_wizard_get(wizard_id: str) -> dict[str, Any]:
+    from app.services.night_out_wizard import get_wizard
+
+    try:
+        return get_wizard(wizard_id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="Wizard expired or not found") from e
+
+
+@router.post("/api/concierge/night-out/wizard/{wizard_id}/guests")
+def night_out_wizard_guests(wizard_id: str, body: WizardGuestsBody) -> dict[str, Any]:
+    from app.services.night_out_wizard import set_guests
+
+    try:
+        return set_guests(wizard_id, body.guests)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="Wizard expired or not found") from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.get("/api/concierge/night-out/wizard/{wizard_id}/venues")
+async def night_out_wizard_venues(wizard_id: str, q: str = "") -> dict[str, Any]:
+    from app.services.night_out_wizard import search_venues
+
+    try:
+        return await search_venues(wizard_id, q)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="Wizard expired or not found") from e
+
+
+@router.post("/api/concierge/night-out/wizard/{wizard_id}/venue")
+async def night_out_wizard_venue(wizard_id: str, body: WizardVenueBody) -> dict[str, Any]:
+    from app.services.night_out_wizard import set_venue
+
+    try:
+        return await set_venue(wizard_id, restaurant_id=body.restaurant_id, name=body.name)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="Wizard expired or not found") from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.post("/api/concierge/night-out/wizard/{wizard_id}/slot")
+def night_out_wizard_slot(wizard_id: str, body: WizardSlotBody) -> dict[str, Any]:
+    from app.services.night_out_wizard import set_slot
+
+    try:
+        return set_slot(
+            wizard_id,
+            slot=body.slot,
+            slot_id=body.slot_id,
+            start_iso=body.start_iso,
+        )
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="Wizard expired or not found") from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.post("/api/concierge/night-out/wizard/{wizard_id}/confirm")
+async def night_out_wizard_confirm(wizard_id: str) -> dict[str, Any]:
+    from app.services.google_calendar import CalendarAuthError
+    from app.services.night_out_wizard import confirm_wizard
+
+    try:
+        return await confirm_wizard(wizard_id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="Wizard expired or not found") from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except CalendarAuthError as e:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "calendar_auth",
+                "message": str(e),
+                "fix": "python scripts/google_auth_setup.py",
+            },
+        ) from e
+
+
+@router.post("/api/concierge/dinner-party")
+async def concierge_dinner_party(body: DinnerPartyBody) -> dict[str, Any]:
+    """Demo: home dinner party Calendar + food/IM staging + split-after-approve."""
+    from fastapi import HTTPException
+
+    from app.services.google_calendar import CalendarAuthError
+    from app.services.night_out import plan_dinner_party
+
+    try:
+        return await plan_dinner_party(
+            guest_names=body.guests,
+            dish_query=body.dish_query,
+            guest_count=body.guest_count,
+        )
+    except CalendarAuthError as e:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "calendar_auth",
+                "message": str(e),
+                "fix": "python scripts/google_auth_setup.py",
+            },
+        ) from e
+
+
+@router.get("/api/concierge/calendar/status")
+def concierge_calendar_status() -> dict[str, Any]:
+    """Whether live Google Calendar inserts will succeed."""
+    from app.services.google_calendar import calendar_connection_status
+
+    return calendar_connection_status()
+
+
+@router.get("/api/concierge/receipts/latest")
+def concierge_latest_receipt() -> dict[str, Any]:
+    """Latest night_out_receipt QoL meta for the Ops receipt card."""
+    for item in list_qol_events(limit=40):
+        if item.get("kind") == "night_out_receipt":
+            return {"receipt": item.get("meta") or {}, "event": item}
+    return {"receipt": None}
+
+
 @router.get("/api/concierge/pantry")
 def concierge_pantry() -> dict[str, Any]:
     """Pantry radar — per-SKU depletion predictions from Instamart history."""
@@ -301,7 +496,7 @@ class CalendarReplayBody(BaseModel):
     description: str = "Weekly team catchup and dinner #swiggy"
     location: str = "Home"
     start_time: str | None = None
-    attendee_emails: list[str] = ["dani@nexus.ai", "priya@nexus.ai", "alex@nexus.ai"]
+    attendee_emails: list[str] = ["aryan@nexus.ai", "himali@nexus.ai", "siya@nexus.ai"]
     event_id: str | None = None
 
 

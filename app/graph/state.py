@@ -14,7 +14,19 @@ class ConciergeState(TypedDict, total=False):
     event_description: str
     attendee_emails: list[str]
     calendar_event_id: str
+    calendar_html_link: str
+    calendar_mock: bool
+    maps_url: str
+    suppress_hitl_telegram: bool
+    preferred_restaurant_query: str
+    preferred_slot: str
+    preferred_slot_id: str | None
+    preferred_food_query: str
+    guest_count: int
+    auto_split_bill: bool
     trigger_type: str
+    bill_split: dict[str, Any]
+    night_out_receipt: dict[str, Any]
 
     # Taste vault
     group_profile: dict[str, Any]

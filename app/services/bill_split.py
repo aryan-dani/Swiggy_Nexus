@@ -20,8 +20,18 @@ _UPI_HANDLE = "nexus.demo@upi"
 
 # Friendly names for the demo Taste Vault users
 _KNOWN_NAMES = {
-    "dani@nexus.ai": "Dani",
+    "aryan@nexus.ai": "Aryan",
+    "himali@nexus.ai": "Himali",
+    "siya@nexus.ai": "Siya",
+    "swayam@nexus.ai": "Swayam",
     "priya@nexus.ai": "Priya",
+    "kabir@nexus.ai": "Kabir",
+    "ananya@nexus.ai": "Ananya",
+    "rohan@nexus.ai": "Rohan",
+    "meera@nexus.ai": "Meera",
+    # legacy
+    "dani@nexus.ai": "Aryan",
+    "sobaan@nexus.ai": "Siya",
     "alex@nexus.ai": "Alex",
 }
 

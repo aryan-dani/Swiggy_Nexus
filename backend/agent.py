@@ -372,13 +372,21 @@ def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[st
     """Combined Dineout + Instamart + Food evening planner (staged, no auto-place)."""
     from backend.memory import set_user_preference
     import json
+    import hashlib
 
     event = ctx.get("event") if isinstance(ctx.get("event"), dict) else {}
     guests = int(event.get("guests") or ctx.get("partySize") or ctx.get("party_size") or 12)
     cuisine = str(event.get("cuisineHint") or "italian").lower()
     event_title = str(event.get("title") or "Your evening")
+    im_query = str(event.get("imQuery") or "party plates napkins drinks")
+    dessert_query = str(event.get("dessertQuery") or "gelato")
+    # Stable-but-varying pick across demos so the same cuisine doesn't always show #1
+    pick_seed = int(hashlib.md5(f"{event_title}:{cuisine}:{guests}".encode()).hexdigest()[:8], 16)
 
-    yield _thinking("Planner · Chrono-Host: orchestrating Dineout + Instamart + Food across one evening.")
+    yield _thinking(
+        f"Planner · Chrono-Host: {event_title} · {guests} guests · {cuisine} — "
+        "orchestrating Dineout + Instamart + Food."
+    )
 
     # --- Dineout leg ---
     yield _thinking("Dineout: resolving saved locations.")
@@ -393,7 +401,9 @@ def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[st
     dine_search = call_tool("dineout", "search_restaurants_dineout", dine_params)
     yield {"type": "tool", "payload": _sse_tool("dineout", "/dineout", "search_restaurants_dineout", dine_params, dine_search)}
     ds = dine_search if isinstance(dine_search, dict) else {}
-    rest_id = str((ds.get("restaurants") or [{}])[0].get("restaurant_id", "do_italian_804"))
+    dine_list = [r for r in (ds.get("restaurants") or []) if isinstance(r, dict)] or [{}]
+    rest_pick = dine_list[pick_seed % len(dine_list)]
+    rest_id = str(rest_pick.get("restaurant_id", "do_italian_804"))
 
     slot_params = {"restaurantId": rest_id, "guestCount": guests, "date": "2026-07-12", "partySize": guests}
     slots_any = call_tool("dineout", "get_available_slots", slot_params)
@@ -403,14 +413,14 @@ def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[st
     slot_label = slot0.get("label", "20:00")
 
     # --- Instamart leg ---
-    yield _thinking("Instamart: party supplies for the housewarming.")
+    yield _thinking(f"Instamart: staging supplies — “{im_query}”.")
     addr_any = call_tool("food", "get_addresses", {})
     yield {"type": "tool", "payload": _sse_tool("food", "/food", "get_addresses", {}, addr_any)}
     addrs = addr_any if isinstance(addr_any, dict) else {}
     addr_id = _pick_address_id(ctx, addrs)
 
-    im_search = call_tool("im", "search_products", {"addressId": addr_id, "query": "party"})
-    yield {"type": "tool", "payload": _sse_tool("im", "/im", "search_products", {"query": "party"}, im_search)}
+    im_search = call_tool("im", "search_products", {"addressId": addr_id, "query": im_query})
+    yield {"type": "tool", "payload": _sse_tool("im", "/im", "search_products", {"query": im_query}, im_search)}
     im_prods = (im_search.get("products") if isinstance(im_search, dict) else []) or []
     im_lines: list[dict[str, Any]] = []
     for p in im_prods[:4]:
@@ -426,18 +436,21 @@ def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[st
     yield {"type": "tool", "payload": _sse_tool("im", "/im", "get_cart", {"requestId": uuid_session}, im_cart_view)}
 
     # --- Food dessert leg (staged) ---
-    yield _thinking("Food: staging gelato dessert for ~10 PM (reminder — no scheduled delivery in v1).")
-    dessert_search = call_tool("food", "search_restaurants", {"addressId": addr_id, "query": "gelato"})
-    yield {"type": "tool", "payload": _sse_tool("food", "/food", "search_restaurants", {"query": "gelato"}, dessert_search)}
+    yield _thinking(f"Food: staging “{dessert_query}” dessert for ~10 PM (reminder — no scheduled delivery in v1).")
+    dessert_search = call_tool("food", "search_restaurants", {"addressId": addr_id, "query": dessert_query})
+    yield {"type": "tool", "payload": _sse_tool("food", "/food", "search_restaurants", {"query": dessert_query}, dessert_search)}
     ds_food = dessert_search if isinstance(dessert_search, dict) else {}
-    gelato_rid = str((ds_food.get("restaurants") or [{}])[0].get("restaurant_id", "fd_gelato_108"))
+    food_list = [r for r in (ds_food.get("restaurants") or []) if isinstance(r, dict)] or [{}]
+    dessert_pick = food_list[pick_seed % len(food_list)]
+    dessert_rid = str(dessert_pick.get("restaurant_id", "fd_gelato_108"))
+    dessert_name = str(dessert_pick.get("name") or dessert_query.title())
 
-    menu_any = call_tool("food", "get_restaurant_menu", {"restaurantId": gelato_rid, "addressId": addr_id})
-    yield {"type": "tool", "payload": _sse_tool("food", "/food", "get_restaurant_menu", {"restaurantId": gelato_rid}, menu_any)}
+    menu_any = call_tool("food", "get_restaurant_menu", {"restaurantId": dessert_rid, "addressId": addr_id})
+    yield {"type": "tool", "payload": _sse_tool("food", "/food", "get_restaurant_menu", {"restaurantId": dessert_rid}, menu_any)}
 
     food_cart_params = {
         "requestId": uuid_session,
-        "restaurantId": gelato_rid,
+        "restaurantId": dessert_rid,
         "addressId": addr_id,
         "cartItems": [{"itemId": "gv_pistachio", "quantity": 2}],
         "lines": [{"item_id": "gv_pistachio", "qty": 2}],
@@ -447,7 +460,7 @@ def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[st
     food_cart_view = call_tool("food", "get_food_cart", {"requestId": uuid_session, "addressId": addr_id})
     yield {"type": "tool", "payload": _sse_tool("food", "/food", "get_food_cart", {"addressId": addr_id}, food_cart_view)}
 
-    _rest0 = (ds.get("restaurants") or [{}])[0]
+    _rest0 = rest_pick if isinstance(rest_pick, dict) else {}
     bundle = {
         "event": event_title,
         "dineout": {
@@ -463,7 +476,7 @@ def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[st
     }
     set_user_preference("last_event_bundle", json.dumps(bundle))
 
-    dine_name = (ds.get("restaurants") or [{}])[0].get("name", "Restaurant")
+    dine_name = _rest0.get("name", "Restaurant")
     im_total = (im_cart_view or {}).get("total", "?") if isinstance(im_cart_view, dict) else "?"
     food_total = (food_cart_view or {}).get("total", "?") if isinstance(food_cart_view, dict) else "?"
 
@@ -471,7 +484,7 @@ def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[st
         {
             "type": "event_bundle",
             "title": f"Evening plan · {event_title}",
-            "subtitle": "Dineout + Instamart + Food dessert — review each leg",
+            "subtitle": f"Dineout + Instamart + {dessert_query} — review each leg",
             "meta": bundle,
         },
         {
@@ -485,21 +498,21 @@ def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[st
         feed.append({
             "type": "instamart",
             "title": p.get("name"),
-            "subtitle": "Party supplies (staged)",
-            "meta": {"product_id": p.get("product_id")},
+            "subtitle": f"Staged · {im_query.split()[0] if im_query else 'supplies'}",
+            "meta": {"product_id": p.get("product_id"), "price_inr": p.get("price_inr") or (p.get("variants") or [{}])[0].get("price")},
         })
     feed.append({
         "type": "restaurant",
-        "title": "Gelato dessert @ 10 PM",
+        "title": f"{dessert_name} · {dessert_query} @ 10 PM",
         "subtitle": f"Staged cart ₹{food_total} — I'll remind you to place at 10 PM",
-        "meta": {"restaurant_id": gelato_rid},
+        "meta": {"restaurant_id": dessert_rid, "cuisine": dessert_query},
     })
 
     reply = (
-        f"Here's your evening bundle for **{event_title}**:\n\n"
+        f"Here's your evening bundle for **{event_title}** ({guests} guests · {cuisine}):\n\n"
         f"1. **Dineout** — {dine_name}, table for {guests} at {slot_label}. Reply **confirm table** to book.\n"
-        f"2. **Instamart** — party supplies staged (₹{im_total}). Reply **confirm groceries** to checkout.\n"
-        f"3. **Food** — gelato dessert staged (₹{food_total}). Swiggy can't schedule delivery yet — "
+        f"2. **Instamart** — “{im_query}” staged (₹{im_total}). Reply **confirm groceries** to checkout.\n"
+        f"3. **Food** — {dessert_query} via {dessert_name} staged (₹{food_total}). "
         f"I'll remind you at **10 PM** to place; reply **confirm dessert** when ready.\n\n"
         "Nothing has been placed automatically."
     )

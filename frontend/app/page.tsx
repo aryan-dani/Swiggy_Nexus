@@ -94,12 +94,23 @@ function HomeInner() {
   );
 
   /** WOW demo — do NOT force developer mode; Demo Director narrates instead. */
-  const handleWowDemo = useCallback((scenario: NexusReviewerScenario, prompt: string) => {
-    const next = saveDemoSettings({ reviewerScenario: scenario });
-    setDemo(next);
-    setSuggestedPrompt(prompt);
-    setActiveTab("chat");
-  }, []);
+  const handleWowDemo = useCallback(
+    (scenario: NexusReviewerScenario, prompt: string, variant?: import("@/lib/wow-variants").WowVariant) => {
+      if (variant && typeof window !== "undefined") {
+        try {
+          window.sessionStorage.setItem("nexus_wow_variant_v1", JSON.stringify(variant));
+        } catch {
+          /* ignore */
+        }
+      }
+      const next = saveDemoSettings({ reviewerScenario: scenario });
+      setDemo(next);
+      setSuggestedPrompt(prompt);
+      setActiveTab("chat");
+      setFeedItems([]);
+    },
+    []
+  );
 
   const handlePickScenario = useCallback((scenario: NexusReviewerScenario, prompt: string) => {
     const next = saveDemoSettings({ reviewerScenario: scenario });
@@ -173,7 +184,11 @@ function HomeInner() {
           </div>
 
           <motion.main
-            className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 sm:px-6 lg:flex-row lg:gap-0 lg:overflow-hidden lg:px-8 lg:py-4"
+            className={
+              activeTab === "chat"
+                ? "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 sm:px-6 lg:flex-row lg:gap-0 lg:overflow-hidden lg:px-8 lg:py-4"
+                : "neo-scrollbar flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 sm:px-6 lg:px-8 lg:py-4"
+            }
             variants={staggerContainer}
             initial="hidden"
             animate="show"
@@ -232,17 +247,26 @@ function HomeInner() {
                   />
                 </motion.section>
               </>
-            ) : activeTab === "library" ? (
-              <motion.div variants={fadeUp} className="w-full px-2">
-                <LibraryView />
-              </motion.div>
             ) : activeTab === "concierge" ? (
-              <motion.div variants={fadeUp} className="w-full px-2">
+              <motion.div
+                variants={fadeUp}
+                className="neo-scrollbar w-full min-h-0 flex-1 overflow-y-auto px-2 pb-10"
+              >
                 <ConciergeOps />
               </motion.div>
             ) : activeTab === "analytics" ? (
-              <motion.div variants={fadeUp} className="w-full px-2">
+              <motion.div
+                variants={fadeUp}
+                className="neo-scrollbar w-full min-h-0 flex-1 overflow-y-auto px-2 pb-10"
+              >
                 <AnalyticsView />
+              </motion.div>
+            ) : activeTab === "library" ? (
+              <motion.div
+                variants={fadeUp}
+                className="neo-scrollbar w-full min-h-0 flex-1 overflow-y-auto px-2 pb-10"
+              >
+                <LibraryView />
               </motion.div>
             ) : (
               <motion.div

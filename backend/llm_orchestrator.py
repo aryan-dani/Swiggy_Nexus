@@ -1,6 +1,7 @@
-"""SSE chat orchestrator — Gemini primary, Groq fallback, deterministic last resort.
+"""SSE chat orchestrator — Gemini primary, Groq fallback, Ollama local, deterministic last resort.
 
 Telegram uses the async twin in `app/services/llm.py`. Both share `backend/tool_schemas.TOOLS`.
+When `LLM_PROVIDER=ollama`, neither Gemini nor Groq is touched.
 """
 
 from __future__ import annotations
@@ -56,12 +57,15 @@ SCENARIO_PROMPTS: dict[str, str] = {
 }
 
 
-def _env_keys() -> tuple[str, str, str, str]:
-    """Return (gemini_key, gemini_model, groq_key, groq_model) from env + app settings."""
+def _env_keys() -> tuple[str, str, str, str, str, str, str]:
+    """Return (gemini_key, gemini_model, groq_key, groq_model, ollama_base, ollama_model, provider)."""
     gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
     gemini_model = os.environ.get("GEMINI_MODEL", "").strip() or "gemini-3.5-flash-lite"
     groq_key = os.environ.get("GROQ_API_KEY", "").strip()
     groq_model = os.environ.get("GROQ_MODEL", "").strip() or "llama-3.3-70b-versatile"
+    ollama_base = os.environ.get("OLLAMA_BASE_URL", "").strip() or "http://127.0.0.1:11434"
+    ollama_model = os.environ.get("OLLAMA_MODEL", "").strip() or "qwen2.5:7b-instruct"
+    provider = os.environ.get("LLM_PROVIDER", "").strip() or "auto"
     try:
         from app.config import settings
 
@@ -77,9 +81,20 @@ def _env_keys() -> tuple[str, str, str, str]:
             or settings.GROQ_MODEL.strip()
             or groq_model
         )
+        ollama_base = (
+            os.environ.get("OLLAMA_BASE_URL", "").strip()
+            or settings.OLLAMA_BASE_URL.strip()
+            or ollama_base
+        )
+        ollama_model = (
+            os.environ.get("OLLAMA_MODEL", "").strip()
+            or settings.OLLAMA_MODEL.strip()
+            or ollama_model
+        )
+        provider = os.environ.get("LLM_PROVIDER", "").strip() or settings.LLM_PROVIDER or provider
     except Exception:  # noqa: BLE001
         pass
-    return gemini_key, gemini_model, groq_key, groq_model
+    return gemini_key, gemini_model, groq_key, groq_model, ollama_base, ollama_model, provider
 
 
 def _gemini_model_chain(preferred: str) -> list[str]:
@@ -263,21 +278,17 @@ def _dispatch_named_tool(
     return vertical, method, data
 
 
-def _run_groq_loop(
+def _run_openai_compat_loop(
     *,
+    client: Any,
     user_message: str,
     system_prompt: str,
-    api_key: str,
     model: str,
+    banner: str,
 ) -> Generator[dict[str, Any], None, None]:
-    from groq import Groq
-
-    client = Groq(api_key=api_key)
+    """Shared sync tool loop for Groq and Ollama (OpenAI-compatible chat API)."""
     session_id = str(uuid.uuid4())
-    yield {
-        "type": "thinking",
-        "payload": {"text": f"Groq {model} · agentic MCP tool loop (fallback)"},
-    }
+    yield {"type": "thinking", "payload": {"text": banner}}
 
     messages: list[Any] = [
         {"role": "system", "content": system_prompt},
@@ -292,7 +303,8 @@ def _run_groq_loop(
             seen_feed_keys.add(key)
             feed_items.append(item)
 
-    while True:
+    max_rounds = 8
+    for _ in range(max_rounds):
         try:
             resp = client.chat.completions.create(
                 model=model,
@@ -359,6 +371,54 @@ def _run_groq_loop(
                     "tool_call_id": tool_call.id,
                     "content": json.dumps({"error": {"code": "EXECUTOR_ERROR", "message": str(e)}}),
                 })
+
+    assistant_reply = "I ran out of tool steps — try narrowing the request."
+    yield {"type": "assistant", "payload": {"text": assistant_reply}}
+    if feed_items:
+        yield {"type": "feed", "payload": {"items": list(feed_items)}}
+    yield {
+        "type": "done",
+        "payload": {"assistant_reply": assistant_reply, "feed_items": feed_items},
+    }
+
+
+def _run_groq_loop(
+    *,
+    user_message: str,
+    system_prompt: str,
+    api_key: str,
+    model: str,
+) -> Generator[dict[str, Any], None, None]:
+    from groq import Groq
+
+    client = Groq(api_key=api_key)
+    yield from _run_openai_compat_loop(
+        client=client,
+        user_message=user_message,
+        system_prompt=system_prompt,
+        model=model,
+        banner=f"Groq {model} · agentic MCP tool loop (fallback)",
+    )
+
+
+def _run_ollama_loop(
+    *,
+    user_message: str,
+    system_prompt: str,
+    base_url: str,
+    model: str,
+) -> Generator[dict[str, Any], None, None]:
+    from openai import OpenAI
+
+    base = base_url.rstrip("/")
+    client = OpenAI(base_url=f"{base}/v1", api_key="ollama")
+    yield from _run_openai_compat_loop(
+        client=client,
+        user_message=user_message,
+        system_prompt=system_prompt,
+        model=model,
+        banner=f"Ollama {model} · agentic MCP tool loop",
+    )
 
 
 def _run_gemini_loop(
@@ -489,7 +549,35 @@ def _run_gemini_loop(
 
 def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generator[dict[str, Any], None, None]:
     ctx = context or {}
-    gemini_key, gemini_model, groq_key, groq_model = _env_keys()
+    gemini_key, gemini_model, groq_key, groq_model, ollama_base, ollama_model, provider = _env_keys()
+
+    # Local rehearsal: never touch Gemini/Groq when LLM_PROVIDER=ollama.
+    if provider == "ollama":
+        prefs = get_user_preferences()
+        prefs_str = json.dumps(prefs) if prefs else "None"
+        system_prompt = _build_system_prompt(prefs_str, _scenario_hint(ctx))
+        try:
+            from openai import OpenAI  # noqa: F401
+        except Exception as e:  # noqa: BLE001
+            msg = f"Ollama path needs the openai package: {e}"
+            yield {"type": "assistant", "payload": {"text": msg}}
+            yield {"type": "done", "payload": {"assistant_reply": msg, "feed_items": []}}
+            return
+        try:
+            yield from _run_ollama_loop(
+                user_message=user_message,
+                system_prompt=system_prompt,
+                base_url=ollama_base,
+                model=ollama_model,
+            )
+        except Exception as e:  # noqa: BLE001
+            msg = (
+                f"Ollama failed ({e}). Is `ollama serve` running at {ollama_base}? "
+                "Not falling back to Gemini."
+            )
+            yield {"type": "assistant", "payload": {"text": msg}}
+            yield {"type": "done", "payload": {"assistant_reply": msg, "feed_items": []}}
+        return
 
     # Rich scripted demos only when no LLM is configured.
     if not gemini_key and not groq_key and ctx.get("scenario") in REVIEWER_SCENARIOS:

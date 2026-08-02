@@ -46,36 +46,76 @@ export function captionForMethod(method: string): string {
 
 export function stepFromToolMethod(method: string): DemoStepId | null {
   const m = method.toLowerCase();
+  // Prefer dineout-specific tools before generic address helpers
   if (
     m.includes("dineout") ||
     m.includes("book_table") ||
     m.includes("available_slots") ||
     m.includes("check_availability") ||
-    m.includes("restaurant_details")
+    m.includes("restaurant_details") ||
+    m.includes("search_restaurants_dineout") ||
+    m.includes("get_saved_locations")
   ) {
     return "dineout";
   }
+  // Instamart — include get_addresses only when Chrono is already past Dineout
+  // (caller uses advanceDemoStep; mapping address→IM is intentional for Chrono order)
   if (
     m.includes("search_products") ||
     m.includes("update_cart") ||
     m.includes("get_cart") ||
     m.includes("checkout") ||
     m.includes("instamart") ||
-    m.startsWith("im_")
+    m.startsWith("im_") ||
+    m === "food_get_addresses" ||
+    m === "get_addresses"
   ) {
     return "instamart";
   }
   if (
-    m.includes("food") ||
     m.includes("get_menu") ||
     m.includes("get_restaurant_menu") ||
     m.includes("place_food") ||
     m.includes("update_food") ||
-    m.includes("search_restaurants")
+    m.includes("get_food_cart") ||
+    (m.includes("search_restaurants") && !m.includes("dineout"))
   ) {
-    // search_restaurants without dineout → food
-    if (m.includes("dineout")) return "dineout";
     return "food";
+  }
+  return null;
+}
+
+const STEP_RANK: Record<DemoStepId, number> = {
+  plan: 0,
+  dineout: 1,
+  instamart: 2,
+  food: 3,
+  bundle: 4,
+};
+
+/** Never go backwards — stops Plan ↔ Instamart thrashing during SSE. */
+export function advanceDemoStep(
+  current: DemoStepId | null,
+  next: DemoStepId | null
+): DemoStepId | null {
+  if (!next) return current;
+  if (!current) return next;
+  return STEP_RANK[next] >= STEP_RANK[current] ? next : current;
+}
+
+export function stepFromThinkingText(text: string): DemoStepId | null {
+  const t = text.toLowerCase();
+  if (t.includes("instamart") || t.includes("party supplies") || t.includes("grocery")) {
+    return "instamart";
+  }
+  if (t.includes("dineout") || t.includes("table") || t.includes("venue")) {
+    return "dineout";
+  }
+  if (t.includes("food") || t.includes("dessert") || t.includes("gelato") || t.includes("catering")) {
+    return "food";
+  }
+  if (t.includes("planner") || t.includes("orchestrat") || t.includes("chrono")) {
+    return "plan";
   }
   return null;
 }

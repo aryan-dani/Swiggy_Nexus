@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import logging
+import os
 from typing import Any
 
 import httpx
@@ -11,6 +11,15 @@ import httpx
 from app.config import settings
 
 log = logging.getLogger(__name__)
+
+
+def _force_console_telegram() -> bool:
+    """True when unsolicited Telegram outbound must fall back to console."""
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return True
+    if not settings.TELEGRAM_OUTBOUND_ENABLED:
+        return True
+    return False
 
 
 async def send_approval_request(
@@ -21,6 +30,8 @@ async def send_approval_request(
     request_id: str | None = None,
 ) -> bool:
     platform = (platform or "console").lower().strip()
+    if platform == "telegram" and _force_console_telegram():
+        platform = "console"
     req_id = request_id or event_summary.get("request_id", "REQ-UNKNOWN")
     title = event_summary.get("title", "Social Concierge Event")
     loc = event_summary.get("location", "Home")
@@ -116,7 +127,12 @@ async def send_qol_prompt(
     buttons: list[tuple[str, str]] | None = None,
 ) -> bool:
     """Send a free-form QoL prompt (rain / bhajiya / guests / IPL)."""
-    if settings.NOTIFICATION_PLATFORM == "telegram" and settings.TELEGRAM_BOT_TOKEN:
+    use_telegram = (
+        settings.NOTIFICATION_PLATFORM == "telegram"
+        and settings.TELEGRAM_BOT_TOKEN
+        and not _force_console_telegram()
+    )
+    if use_telegram:
         url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
         keyboard = None
         if buttons:

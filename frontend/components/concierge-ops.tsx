@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarClock,
   Check,
@@ -21,6 +21,8 @@ import { motion, AnimatePresence } from "framer-motion";
 
 import { getApiBase } from "@/lib/api";
 import { ItemLinesList, type ItemLine } from "@/components/item-lines-list";
+import { NightOutReceipt, receiptDismissKey, type NightOutReceiptData } from "@/components/night-out-receipt";
+import { NightOutWizardPanel } from "@/components/night-out-wizard";
 import { SplitBillButton } from "@/components/split-bill-card";
 import { neoSpring } from "@/lib/motion";
 import { nexusToast } from "@/lib/nexus-toast-bus";
@@ -44,6 +46,7 @@ type TimelineItem = {
   detail: string;
   severity: string;
   created_at: string;
+  meta?: Record<string, unknown>;
 };
 
 type AgentInfo = {
@@ -117,6 +120,8 @@ const PHASE_COPY: Record<DemoPhase, { label: string; blurb: string; tone: string
 
 const TRIGGER_CHIP: Record<string, string> = {
   calendar_concierge: "bg-violet-100 text-violet-900 border-violet-300",
+  night_out: "bg-amber-100 text-amber-950 border-amber-400",
+  dinner_party: "bg-orange-100 text-orange-950 border-orange-400",
   voice_order: "bg-cyan-100 text-cyan-900 border-cyan-300",
   guest_sos: "bg-amber-100 text-amber-900 border-amber-300",
   pantry_refill: "bg-emerald-100 text-emerald-900 border-emerald-300",
@@ -135,6 +140,9 @@ const KIND_ICON: Record<string, string> = {
   agent_reply: "💬",
   agent_error: "⚠️",
   calendar_push: "📅",
+  night_out_planned: "📅",
+  night_out_receipt: "🎟",
+  dinner_party_planned: "🏠",
   guest_sos: "🛎",
   pantry_refill: "🥛",
   bill_split: "🧾",
@@ -215,21 +223,56 @@ export function ConciergeOps({ className }: { className?: string }) {
   const [lastAction, setLastAction] = useState<string>("");
   const [lastRequestId, setLastRequestId] = useState<string>("");
   const [lastResult, setLastResult] = useState<string>("");
+  const [receipt, setReceipt] = useState<NightOutReceiptData | null>(null);
+  const [nightOutWizardOpen, setNightOutWizardOpen] = useState(false);
+  const dismissedReceiptRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    try {
+      dismissedReceiptRef.current = window.sessionStorage.getItem("nexus-dismissed-receipt");
+    } catch {
+      dismissedReceiptRef.current = null;
+    }
+  }, []);
+
+  const dismissReceipt = useCallback(() => {
+    if (receipt) {
+      const key = receiptDismissKey(receipt);
+      dismissedReceiptRef.current = key;
+      try {
+        window.sessionStorage.setItem("nexus-dismissed-receipt", key);
+      } catch {
+        /* ignore */
+      }
+    }
+    setReceipt(null);
+    nexusToast("Night out card dismissed");
+  }, [receipt]);
 
   const refresh = useCallback(async () => {
     try {
-      const [a, t, w, p, g] = await Promise.all([
-        fetch(apiUrl("/api/concierge/approvals")).then((r) => r.json()),
-        fetch(apiUrl("/api/concierge/timeline")).then((r) => r.json()),
-        fetch(apiUrl("/api/concierge/weather")).then((r) => r.json()),
-        fetch(apiUrl("/api/concierge/pantry")).then((r) => r.json()),
-        fetch(apiUrl("/api/concierge/agent")).then((r) => r.json()),
+      const [a, t, w, p, g, r] = await Promise.all([
+        fetch(apiUrl("/api/concierge/approvals")).then((res) => res.json()),
+        fetch(apiUrl("/api/concierge/timeline")).then((res) => res.json()),
+        fetch(apiUrl("/api/concierge/weather")).then((res) => res.json()),
+        fetch(apiUrl("/api/concierge/pantry")).then((res) => res.json()),
+        fetch(apiUrl("/api/concierge/agent")).then((res) => res.json()),
+        fetch(apiUrl("/api/concierge/receipts/latest")).then((res) => res.json()),
       ]);
       setApprovals(a.items || []);
       setTimeline(t.items || []);
       setWeather(w);
       setPantryItems(p.items || []);
       setAgent(g);
+      if (r?.receipt) {
+        const next = r.receipt as NightOutReceiptData;
+        const key = receiptDismissKey(next);
+        if (dismissedReceiptRef.current === key) {
+          setReceipt(null);
+        } else {
+          setReceipt(next);
+        }
+      }
     } catch {
       /* backend offline — keep last */
     }
@@ -260,7 +303,16 @@ export function ConciergeOps({ className }: { className?: string }) {
         body: body ? JSON.stringify(body) : undefined,
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.detail || res.statusText);
+      if (!res.ok) {
+        const detail = json.detail;
+        const msg =
+          typeof detail === "string"
+            ? detail
+            : detail?.message
+              ? `${detail.message}${detail.fix ? ` → ${detail.fix}` : ""}`
+              : res.statusText;
+        throw new Error(msg);
+      }
       await refresh();
       return json;
     } catch (e) {
@@ -287,7 +339,7 @@ export function ConciergeOps({ className }: { className?: string }) {
         event_title: kind === "host" ? "Housewarming #host" : "Team Dinner #swiggy",
         event_time: new Date().toISOString(),
         event_location: location,
-        attendee_emails: ["dani@nexus.ai", "priya@nexus.ai"],
+        attendee_emails: ["aryan@nexus.ai", "himali@nexus.ai"],
         description,
       });
       const rid = String(json.approval_request_id || "");
@@ -314,7 +366,7 @@ export function ConciergeOps({ className }: { className?: string }) {
         description: "Hosting 8 people at home. Snacks + dinner please #host #swiggy",
         location: "Home",
         start_time: "Today 20:00",
-        attendee_emails: ["dani@nexus.ai", "priya@nexus.ai", "alex@nexus.ai"],
+        attendee_emails: ["aryan@nexus.ai", "himali@nexus.ai", "siya@nexus.ai"],
       });
       if (json?.status !== "accepted") {
         setPhase("error");
@@ -330,10 +382,21 @@ export function ConciergeOps({ className }: { className?: string }) {
     }
   };
 
+  const triggerNightOut = () => {
+    setLastAction("Night out");
+    setLastResult("");
+    setReceipt(null);
+    setNightOutWizardOpen(true);
+  };
+
   const decide = async (requestId: string, approved: boolean) => {
     setLastRequestId(requestId);
     setPhase("executing");
     nexusToast(approved ? "Executing writes…" : "Rejecting…");
+    // Optimistic UI — drop from pending list immediately so reject feels instant.
+    if (!approved) {
+      setApprovals((prev) => prev.filter((a) => a.request_id !== requestId));
+    }
     try {
       const json = await post(
         approved ? `/api/hitl/approve/${requestId}` : `/api/hitl/reject/${requestId}`,
@@ -342,9 +405,15 @@ export function ConciergeOps({ className }: { className?: string }) {
       const status = String(json.status || (approved ? "COMPLETED" : "REJECTED"));
       setPhase(approved ? "done" : "rejected");
       setLastResult(`${status} · ${requestId}`);
-      nexusToast(approved ? "Done — mock order placed" : "Rejected — nothing charged");
+      await refresh();
+      if (approved) {
+        nexusToast("Done — open receipt below (Calendar · Maps · split)");
+      } else {
+        nexusToast("Rejected — nothing charged");
+      }
     } catch {
-      /* error phase */
+      // Roll back optimistic remove if API failed
+      await refresh();
     }
   };
 
@@ -516,7 +585,33 @@ export function ConciergeOps({ className }: { className?: string }) {
           >
             <CalendarClock className="h-3.5 w-3.5" /> Push calendar event
           </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => triggerNightOut()}
+            title="Walk through guests → restaurant → time, then Calendar + HITL Approve"
+            className="flex items-center gap-1 rounded border-2 border-black bg-amber-300 px-3 py-2 font-display text-[10px] font-black uppercase shadow-[3px_3px_0_0_#000] disabled:opacity-50"
+          >
+            <UtensilsCrossed className="h-3.5 w-3.5" /> Night out
+          </button>
         </div>
+
+        <NightOutWizardPanel
+          open={nightOutWizardOpen}
+          onClose={() => setNightOutWizardOpen(false)}
+          onConfirmed={(json) => {
+            const rid = String(json.approval_request_id || "");
+            setLastRequestId(rid);
+            setPhase("awaiting_hitl");
+            setLastResult(
+              `Night out paused · ${rid || "?"} · ${json.venue || "venue"} · ${json.slot || ""} · Calendar ${
+                json.calendar_mock ? "mock" : "live"
+              }`
+            );
+            nexusToast("Approve below — then watch the receipt");
+            void refresh();
+          }}
+        />
 
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -581,6 +676,10 @@ export function ConciergeOps({ className }: { className?: string }) {
         </div>
       </section>
 
+      {receipt && (
+        <NightOutReceipt receipt={receipt} className="mb-1" onDismiss={dismissReceipt} />
+      )}
+
       <div className="grid gap-3 lg:grid-cols-2">
         {/* Zone: Needs your approval */}
         <section className="rounded-lg border-2 border-amber-500 bg-amber-50 p-3">
@@ -628,6 +727,51 @@ export function ConciergeOps({ className }: { className?: string }) {
                       )}
                     </div>
                     <p className="mt-0.5 font-sans text-[11px] text-slate-600">{a.summary}</p>
+                    {(() => {
+                      const emails = (a.staged_payload?.attendee_emails ||
+                        a.cost_breakdown?.attendee_emails ||
+                        []) as string[];
+                      const maps = String(
+                        a.staged_payload?.maps_url || a.cost_breakdown?.maps_url || ""
+                      );
+                      const cal = String(
+                        a.staged_payload?.calendar_html_link ||
+                          a.cost_breakdown?.calendar_html_link ||
+                          ""
+                      );
+                      if (!emails.length && !maps && !cal) return null;
+                      return (
+                        <div className="mt-1.5 space-y-1">
+                          {emails.length > 0 && (
+                            <p className="font-mono text-[10px] text-slate-600">
+                              Invitees: {emails.map((e) => e.split("@")[0]).join(", ")}
+                            </p>
+                          )}
+                          <div className="flex flex-wrap gap-2">
+                            {cal && (
+                              <a
+                                href={cal}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-display text-[9px] font-black uppercase text-violet-700 underline"
+                              >
+                                Calendar invite
+                              </a>
+                            )}
+                            {maps && (
+                              <a
+                                href={maps}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-display text-[9px] font-black uppercase text-emerald-700 underline"
+                              >
+                                Maps
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {lines.length > 0 && (
                       <ItemLinesList lines={lines} totalInr={total} className="mt-1.5" />
                     )}
@@ -656,6 +800,11 @@ export function ConciergeOps({ className }: { className?: string }) {
                           totalInr={total}
                           orderId={a.request_id}
                           title={a.title}
+                          attendees={
+                            (a.staged_payload?.attendee_emails as string[] | undefined) ||
+                            (a.cost_breakdown?.attendee_emails as string[] | undefined) ||
+                            undefined
+                          }
                         />
                       )}
                     </div>

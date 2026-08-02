@@ -6,11 +6,10 @@ import { motion } from "framer-motion";
 import { type NexusReviewerScenario } from "@/lib/nexus-settings-storage";
 import { neoSpring } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-
-const WOW_PROMPT = "Plan my evening for 12 guests";
+import { pickWowVariant, type WowVariant } from "@/lib/wow-variants";
 
 export type ChatHeroProps = {
-  onRunWow: (scenario: NexusReviewerScenario, prompt: string) => void;
+  onRunWow: (scenario: NexusReviewerScenario, prompt: string, variant?: WowVariant) => void;
   onPickScenario: (scenario: NexusReviewerScenario, prompt: string) => void;
   onOpenConcierge: () => void;
   className?: string;
@@ -20,7 +19,7 @@ const CARDS = [
   {
     id: "wow" as const,
     title: "Run 60s WOW demo",
-    desc: "One click stages Dineout + Instamart + Food — watch the Demo Director narrate each step.",
+    desc: "Each click stages a fresh evening — Dineout + Instamart + Food. Watch the Demo Director.",
     icon: Play,
     primary: true,
   },
@@ -78,8 +77,10 @@ export function ChatHero({ onRunWow, onPickScenario, onOpenConcierge, className 
               whileTap={{ scale: 0.98 }}
               transition={neoSpring}
               onClick={() => {
-                if (card.id === "wow") onRunWow("chrono_host", WOW_PROMPT);
-                else if (card.id === "concierge") onOpenConcierge();
+                if (card.id === "wow") {
+                  const variant = pickWowVariant();
+                  onRunWow("chrono_host", variant.prompt, variant);
+                } else if (card.id === "concierge") onOpenConcierge();
                 else if (card.scenario && card.prompt) onPickScenario(card.scenario, card.prompt);
               }}
               className={cn(
@@ -121,4 +122,4 @@ export function ChatHero({ onRunWow, onPickScenario, onOpenConcierge, className 
   );
 }
 
-export { WOW_PROMPT };
+export { pickWowVariant };

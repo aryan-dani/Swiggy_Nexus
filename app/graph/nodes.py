@@ -11,7 +11,13 @@ from typing import Any
 
 from app.config import settings
 from app.db.profiler import get_group_preferences
-from app.db.store import create_approval, record_dish_history, record_qol_event, save_execution
+from app.db.store import (
+    create_approval,
+    find_pending_approval,
+    record_dish_history,
+    record_qol_event,
+    save_execution,
+)
 from app.graph.state import ConciergeState
 from app.mcp.client import SwiggyMCPError, mcp_client
 from app.services.google_calendar import update_calendar_event_description
@@ -70,25 +76,67 @@ async def parse_and_route_node(state: ConciergeState) -> ConciergeState:
 
 async def stage_dineout_node(state: ConciergeState) -> ConciergeState:
     """READ-ONLY staging: search + slots + menu. Does NOT call book_table."""
+    from app.services.google_calendar import maps_url_for
+    from mock_data.dineout_catalog import DINEOUT_RESTAURANTS
+
     group_profile = state.get("group_profile") or {}
     location = state.get("event_location") or "Pune"
-    party_size = max(2, len(state.get("attendee_emails") or []) or 4)
+    attendees = state.get("attendee_emails") or []
+    preferred = (state.get("preferred_restaurant_query") or "").strip()
+    party_size = max(
+        2,
+        int(state.get("guest_count") or 0),
+        len(attendees) or 0,
+        2,
+    )
     cuisine = (group_profile.get("recommended_cuisines") or ["Italian"])[0]
-    logs = _add_log(state, f"Staging Dineout for '{cuisine}' · party {party_size}")
+    search_q = preferred or cuisine
+    logs = _add_log(state, f"Staging Dineout for '{search_q}' · party {party_size}")
 
     try:
         search_res = await mcp_client.call_tool_async(
             "dineout",
             "search_restaurants_dineout",
-            {"query": cuisine, "area": location, "latitude": DEFAULT_LAT, "longitude": DEFAULT_LNG},
+            {"query": search_q, "area": location, "latitude": DEFAULT_LAT, "longitude": DEFAULT_LNG},
         )
-        restaurants = (search_res or {}).get("restaurants") or []
-        if not restaurants:
-            raise SwiggyMCPError({"code": "NO_RESTAURANT", "message": f"No Dineout results for {cuisine}"})
+        restaurants = list((search_res or {}).get("restaurants") or [])
 
-        selected = restaurants[0]
-        rest_id = str(selected.get("restaurant_id") or selected.get("restaurantId") or "do_italian_804")
-        rest_name = str(selected.get("name") or "Social Bistro")
+        selected = None
+        if preferred:
+            pref_l = preferred.lower()
+            for r in restaurants:
+                name = str(r.get("name") or "").lower()
+                if pref_l in name or any(pref_l in str(c).lower() for c in (r.get("cuisines") or [])):
+                    selected = r
+                    break
+            if not selected:
+                for r in DINEOUT_RESTAURANTS:
+                    if pref_l in r["name"].lower() and r.get("availability") == "AVAILABLE":
+                        selected = {
+                            "restaurant_id": r["restaurant_id"],
+                            "name": r["name"],
+                            "latitude": r.get("_lat"),
+                            "longitude": r.get("_lng"),
+                            "costForTwo": r.get("costForTwo"),
+                        }
+                        break
+        if not selected:
+            if not restaurants:
+                raise SwiggyMCPError({"code": "NO_RESTAURANT", "message": f"No Dineout results for {search_q}"})
+            selected = restaurants[0]
+
+        rest_id = str(selected.get("restaurant_id") or selected.get("restaurantId") or "do_6digs_809")
+        rest_name = str(selected.get("name") or "6 Digs · Kothrud")
+        catalog = next((r for r in DINEOUT_RESTAURANTS if r["restaurant_id"] == rest_id), None)
+        lat = float(selected.get("latitude") or (catalog or {}).get("_lat") or DEFAULT_LAT)
+        lng = float(selected.get("longitude") or (catalog or {}).get("_lng") or DEFAULT_LNG)
+        cost_for_two = float(
+            selected.get("costForTwo")
+            or (catalog or {}).get("costForTwo")
+            or (catalog or {}).get("price_for_two_inr")
+            or 2200
+        )
+        estimated_cover = round(cost_for_two * party_size / 2)
 
         details = {}
         try:
@@ -111,8 +159,8 @@ async def stage_dineout_node(state: ConciergeState) -> ConciergeState:
                 "guestCount": party_size,
                 "partySize": party_size,
                 "date": datetime.date.today().strftime("%Y-%m-%d"),
-                "latitude": DEFAULT_LAT,
-                "longitude": DEFAULT_LNG,
+                "latitude": lat,
+                "longitude": lng,
             },
         )
         slots = (slots_res or {}).get("slots") or []
@@ -121,15 +169,37 @@ async def stage_dineout_node(state: ConciergeState) -> ConciergeState:
                 {"code": "SLOT_UNAVAILABLE", "message": f"No slots at {rest_name}"}
             )
 
+        preferred_slot = (state.get("preferred_slot") or "").strip()
+        preferred_slot_id = state.get("preferred_slot_id")
         first = slots[0]
+        if preferred_slot or preferred_slot_id:
+            for s in slots:
+                if isinstance(s, str):
+                    if preferred_slot and s == preferred_slot:
+                        first = s
+                        break
+                    continue
+                label = str(s.get("label") or s.get("time") or "")
+                sid = s.get("slotId") or s.get("slot_id")
+                if preferred_slot_id and str(sid) == str(preferred_slot_id):
+                    first = s
+                    break
+                if preferred_slot and (
+                    preferred_slot == label or preferred_slot in label
+                ):
+                    first = s
+                    break
+
         if isinstance(first, str):
             slot_label, slot_id, item_id = first, None, None
         else:
             slot_label = str(first.get("label") or first.get("time") or "19:30")
             slot_id = first.get("slotId") or first.get("slot_id")
             item_id = first.get("itemId") or first.get("item_id")
+            deals = first.get("deals") or []
+            if not item_id and deals and isinstance(deals[0], dict):
+                item_id = deals[0].get("itemId")
 
-        # Menu for sommelier via Food vertical (kitchen twin when dineout id)
         food_rid = "fd_dom_101" if str(rest_id).startswith("do_") else rest_id
         menu_res = await mcp_client.call_tool_async(
             "food",
@@ -137,6 +207,7 @@ async def stage_dineout_node(state: ConciergeState) -> ConciergeState:
             {"restaurantId": food_rid, "addressId": state.get("address_id") or DEFAULT_ADDRESS},
         )
 
+        maps = state.get("maps_url") or maps_url_for(rest_name, lat, lng)
         plan = {
             "restaurantId": rest_id,
             "restaurantName": rest_name,
@@ -144,11 +215,16 @@ async def stage_dineout_node(state: ConciergeState) -> ConciergeState:
             "itemId": item_id,
             "reservationTime": slot_label,
             "guestCount": party_size,
-            "latitude": DEFAULT_LAT,
-            "longitude": DEFAULT_LNG,
+            "latitude": lat,
+            "longitude": lng,
             "is_outdoor_or_rooftop": is_outdoor,
             "slot_label": slot_label,
             "foodRestaurantId": food_rid,
+            "costForTwo": cost_for_two,
+            "estimated_cover_inr": estimated_cover,
+            "maps_url": maps,
+            "calendar_html_link": state.get("calendar_html_link"),
+            "attendee_emails": attendees,
         }
         logs = _add_log(
             state,
@@ -164,6 +240,8 @@ async def stage_dineout_node(state: ConciergeState) -> ConciergeState:
             "dineout_item_id": str(item_id) if item_id else None,
             "dineout_menu": menu_res if isinstance(menu_res, dict) else {},
             "dineout_error": None,
+            "maps_url": maps,
+            "total_estimated_cost": float(estimated_cover),
             "execution_logs": logs,
         }
     except SwiggyMCPError as e:
@@ -354,43 +432,60 @@ async def stage_zero_touch_node(state: ConciergeState) -> ConciergeState:
     }
 
 
+def _display_name_from_profile(prof: dict) -> str:
+    name = str(prof.get("full_name") or "").strip()
+    if name:
+        return name
+    email = str(prof.get("email") or "Guest")
+    local = email.split("@")[0].replace(".", " ").replace("_", " ")
+    return local.title() if local else "Guest"
+
+
 def _rule_based_sommelier(state: ConciergeState) -> str:
+    """Plain-text menu sheet — Google Calendar does not render Markdown tables."""
     group_profile = state.get("group_profile") or {}
     individual = group_profile.get("individual_profiles") or []
+    allergies = ", ".join(group_profile.get("all_allergies") or ["none"])
     lines = [
-        "### AI Sommelier · Personalised Menu Sheet",
+        "AI Sommelier · Menu picks",
+        (
+            f"Guardrails: vegan={group_profile.get('must_be_vegan')} · "
+            f"veg={group_profile.get('must_be_vegetarian')} · "
+            f"spice≤{group_profile.get('max_spice_tolerance')}/5 · "
+            f"allergies={allergies}"
+        ),
         "",
-        f"**Guardrails:** vegan=`{group_profile.get('must_be_vegan')}` · "
-        f"veg=`{group_profile.get('must_be_vegetarian')}` · "
-        f"spice≤`{group_profile.get('max_spice_tolerance')}/5` · "
-        f"allergies=`{', '.join(group_profile.get('all_allergies') or ['none'])}`",
-        "",
-        "| Attendee | Diet | Recommended dish | Note |",
-        "|---|---|---|---|",
     ]
     for prof in individual:
-        email = prof.get("email", "Guest")
         p = prof.get("profile") or {}
-        diet = "Vegan" if p.get("is_vegan") else ("Jain" if p.get("is_jain") else ("Veg" if p.get("is_vegetarian") else "Non-veg"))
+        diet = (
+            "Vegan"
+            if p.get("is_vegan")
+            else (
+                "Jain"
+                if p.get("is_jain")
+                else ("Veg" if p.get("is_vegetarian") else "Non-veg")
+            )
+        )
         spice = p.get("spice_tolerance", 3)
         if p.get("is_jain"):
-            dish, note = "Paneer Tikka (no onion/garlic)", "Jain-safe prep"
+            dish = "Paneer Tikka (no onion/garlic)"
         elif p.get("is_vegan"):
-            dish, note = "Vegan Garden Bowl", "No dairy"
+            dish = "Vegan Garden Bowl"
         elif p.get("is_vegetarian"):
-            dish, note = "Malai Kofta / Margherita", f"Spice {spice}/5"
+            dish = "Malai Kofta / Margherita"
         else:
-            dish, note = "Guntur Chilli Chicken" if spice >= 4 else "Butter Chicken", f"Spice {spice}/5"
-        lines.append(f"| `{email}` | {diet} | **{dish}** | {note} |")
+            dish = "Guntur Chilli Chicken" if spice >= 4 else "Butter Chicken"
+        lines.append(f"• {_display_name_from_profile(prof)} — {dish} ({diet})")
     if not individual:
-        lines.append("| guests | mixed | **Chef's tasting platter** | Screened for group allergies |")
+        lines.append("• Guests — Chef's tasting platter (screened for group allergies)")
     lines.append("")
-    lines.append("> Pre-screened against Taste Vault constraints.")
+    lines.append("Pre-screened against Taste Vault constraints.")
     return "\n".join(lines)
 
 
 async def ai_sommelier_node(state: ConciergeState) -> ConciergeState:
-    """Groq-backed menu synthesis with rule-based fallback."""
+    """Groq-backed menu synthesis with rule-based fallback (plain text for Calendar)."""
     fallback = _rule_based_sommelier(state)
     md = fallback
     if settings.GROQ_API_KEY:
@@ -403,8 +498,12 @@ async def ai_sommelier_node(state: ConciergeState) -> ConciergeState:
             prompt = (
                 "You are an Indian AI sommelier for Swiggy Nexus. "
                 "Given group dietary constraints and a restaurant menu JSON, "
-                "return a compact Markdown table recommending one dish per attendee. "
-                "Respect Jain/vegan/veg/allergies/spice. No prose outside the markdown.\n\n"
+                "return a PLAIN TEXT menu sheet (NO markdown tables, NO # headings, NO backticks). "
+                "Format exactly like:\n"
+                "AI Sommelier · Menu picks\n"
+                "Guardrails: …\n"
+                "• Full Name — Dish (Diet)\n"
+                "Respect Jain/vegan/veg/allergies/spice. No prose outside this sheet.\n\n"
                 f"GROUP:\n{json.dumps(group)[:3000]}\n\nMENU:\n{json.dumps(menu)[:4000]}"
             )
             resp = client.chat.completions.create(
@@ -414,7 +513,9 @@ async def ai_sommelier_node(state: ConciergeState) -> ConciergeState:
                 max_tokens=800,
             )
             content = (resp.choices[0].message.content or "").strip()
-            if content and "|" in content:
+            if content and "•" in content and "|---|" not in content and "|" not in content.split("\n")[0]:
+                md = content
+            elif content and "•" in content and "|---|" not in content:
                 md = content
         except Exception as e:  # noqa: BLE001
             log.warning("Sommelier Groq failed (%s); using rule fallback", e)
@@ -425,23 +526,41 @@ async def ai_sommelier_node(state: ConciergeState) -> ConciergeState:
 
 async def hitl_notify_node(state: ConciergeState) -> ConciergeState:
     """Create durable approval + notify Telegram/console, then graph interrupts AFTER this node."""
+    # If we are resuming past HITL (or a bad resume re-enters this node), never
+    # mint a second approval / Telegram push.
+    prior = state.get("approval_status")
+    if prior in ("APPROVED", "REJECTED"):
+        logs = _add_log(state, f"HITL notify skipped — already {prior}")
+        return {**state, "execution_logs": logs}
+
     mode = state.get("mode") or "DINEOUT"
     event_id = state.get("event_id") or f"evt-{uuid.uuid4().hex[:8]}"
     thread_id = event_id
 
     if mode == "DINEOUT":
-        total = 0.0
+        plan = state.get("dineout_plan") or {}
+        total = float(
+            plan.get("estimated_cover_inr")
+            or state.get("total_estimated_cost")
+            or 0
+        )
         breakdown = {
             "mode": "DINEOUT",
             "venue": state.get("dineout_restaurant_name"),
             "slot": state.get("dineout_slot"),
-            "plan": state.get("dineout_plan"),
-            "note": "Table booking executes only after /approve",
+            "plan": plan,
+            "total_inr": total,
+            "estimated_cover_inr": total,
+            "attendee_emails": state.get("attendee_emails") or plan.get("attendee_emails") or [],
+            "calendar_html_link": state.get("calendar_html_link") or plan.get("calendar_html_link"),
+            "maps_url": state.get("maps_url") or plan.get("maps_url"),
+            "note": "Table booking executes only after /approve; bill split after approve",
         }
         summary = (
             f"Book table at {state.get('dineout_restaurant_name')} · "
             f"{state.get('dineout_slot')} · party "
-            f"{(state.get('dineout_plan') or {}).get('guestCount', 2)}"
+            f"{plan.get('guestCount', 2)}"
+            + (f" · ~₹{total:.0f} cover" if total else "")
         )
     else:
         im = float(state.get("instamart_total") or 0)
@@ -454,14 +573,53 @@ async def hitl_notify_node(state: ConciergeState) -> ConciergeState:
             "total_inr": total,
             "staged_im_cart": state.get("staged_im_cart"),
             "staged_food_cart": state.get("staged_food_cart"),
+            "attendee_emails": state.get("attendee_emails") or [],
+            "calendar_html_link": state.get("calendar_html_link"),
+            "maps_url": state.get("maps_url"),
         }
         summary = f"Zero-Touch Host · IM ₹{im:.0f} + Food ₹{food:.0f} (place after approve)"
+
+    trigger_type = state.get("trigger_type") or "calendar_concierge"
+    existing = await asyncio.to_thread(find_pending_approval, event_id, trigger_type)
+    if existing:
+        request_id = existing["request_id"]
+        log.info(
+            "HITL dedupe: reusing PENDING %s for event_id=%s trigger=%s (skip notify)",
+            request_id,
+            event_id,
+            trigger_type,
+        )
+        await asyncio.to_thread(
+            save_execution,
+            event_id,
+            {
+                "request_id": request_id,
+                "status": "paused_at_hitl_checkpoint",
+                "mode": mode,
+                "state": {
+                    **state,
+                    "approval_request_id": request_id,
+                    "approval_status": "PENDING",
+                },
+            },
+        )
+        logs = _add_log(state, f"HITL reused pending · {request_id} (deduped)")
+        return {
+            **state,
+            "event_id": event_id,
+            "approval_request_id": request_id,
+            "approval_status": "PENDING",
+            "total_estimated_cost": total,
+            "cost_summary_breakdown": breakdown,
+            "hitl_message": summary,
+            "execution_logs": logs,
+        }
 
     approval = await asyncio.to_thread(
         create_approval,
         event_id=event_id,
         thread_id=thread_id,
-        trigger_type=state.get("trigger_type") or "calendar_concierge",
+        trigger_type=trigger_type,
         title=state.get("event_title") or "Swiggy Concierge",
         summary=summary,
         cost_breakdown=breakdown,
@@ -471,25 +629,35 @@ async def hitl_notify_node(state: ConciergeState) -> ConciergeState:
             "staged_im_cart": state.get("staged_im_cart"),
             "staged_food_cart": state.get("staged_food_cart"),
             "sommelier": state.get("sommelier_recommendations_markdown"),
+            "attendee_emails": state.get("attendee_emails") or [],
+            "calendar_html_link": state.get("calendar_html_link"),
+            "maps_url": state.get("maps_url"),
+            "auto_split_bill": bool(state.get("auto_split_bill")),
         },
     )
     request_id = approval["request_id"]
     approve_url = f"{settings.BASE_URL.rstrip('/')}/api/hitl/approve/{request_id}"
 
-    await send_approval_request(
-        platform=settings.NOTIFICATION_PLATFORM,
-        event_summary={
-            "request_id": request_id,
-            "title": state.get("event_title", "Concierge"),
-            "time": state.get("event_time_str", ""),
-            "location": state.get("event_location", ""),
-            "attendee_count": len(state.get("attendee_emails") or []),
-            "summary": summary,
-        },
-        cost_breakdown=breakdown,
-        approve_url=approve_url,
-        request_id=request_id,
-    )
+    if not state.get("suppress_hitl_telegram"):
+        await send_approval_request(
+            platform=settings.NOTIFICATION_PLATFORM,
+            event_summary={
+                "request_id": request_id,
+                "title": state.get("event_title", "Concierge"),
+                "time": state.get("event_time_str", ""),
+                "location": state.get("event_location", ""),
+                "attendee_count": len(state.get("attendee_emails") or []),
+                "summary": summary,
+            },
+            cost_breakdown=breakdown,
+            approve_url=approve_url,
+            request_id=request_id,
+        )
+    else:
+        log.info(
+            "HITL %s staged with Telegram notify suppressed (wizard will approve once)",
+            request_id,
+        )
 
     await asyncio.to_thread(
         record_qol_event,
@@ -533,6 +701,9 @@ async def execute_transactions_node(state: ConciergeState) -> ConciergeState:
     mode = state.get("mode") or "DINEOUT"
     address_id = state.get("address_id") or DEFAULT_ADDRESS
     logs = _add_log(state, f"Executing transactions for mode={mode}")
+    booking_id = None
+    im_order_id = None
+    food_order_id = None
 
     if mode == "DINEOUT":
         plan = state.get("dineout_plan") or {}
@@ -558,80 +729,162 @@ async def execute_transactions_node(state: ConciergeState) -> ConciergeState:
             or f"DO_BK_{uuid.uuid4().hex[:8].upper()}"
         )
         logs = _add_log(state, f"book_table OK · {booking_id}")
-        return {
+        state = {
             **state,
             "dineout_booking_id": booking_id,
             "approval_status": "APPROVED",
             "execution_logs": logs,
         }
+    else:
+        # Zero-touch: checkout IM + place food (scheduler may also fire delayed legs)
+        staged_im = state.get("staged_im_cart") or {}
+        staged_food = state.get("staged_food_cart") or {}
 
-    # Zero-touch: checkout IM + place food (scheduler may also fire delayed legs)
-    im_order_id = None
-    food_order_id = None
-    staged_im = state.get("staged_im_cart") or {}
-    staged_food = state.get("staged_food_cart") or {}
-
-    if staged_im.get("items"):
-        await mcp_client.call_tool_async(
-            "im",
-            "update_cart",
-            {
-                "selectedAddressId": staged_im.get("selectedAddressId") or address_id,
-                "items": [
-                    {"spinId": i["spinId"], "quantity": i["quantity"]}
-                    for i in staged_im["items"]
-                ],
-            },
-        )
-        checkout = await mcp_client.call_tool_async(
-            "im",
-            "checkout",
-            {"addressId": staged_im.get("selectedAddressId") or address_id},
-        )
-        im_order_id = str(
-            (checkout or {}).get("order_id")
-            or (checkout or {}).get("orderId")
-            or f"IM-{uuid.uuid4().hex[:8].upper()}"
-        )
-        logs = _add_log(state, f"Instamart checkout OK · {im_order_id}")
-
-    if staged_food.get("cartItems"):
-        await mcp_client.call_tool_async(
-            "food",
-            "update_food_cart",
-            {
-                "restaurantId": staged_food.get("restaurantId"),
-                "addressId": staged_food.get("addressId") or address_id,
-                "cartItems": [
-                    {"itemId": c["itemId"], "quantity": c["quantity"]}
-                    for c in staged_food["cartItems"]
-                ],
-            },
-        )
-        placed = await mcp_client.call_tool_async(
-            "food",
-            "place_food_order",
-            {"addressId": staged_food.get("addressId") or address_id},
-        )
-        food_order_id = str(
-            (placed or {}).get("order_id")
-            or (placed or {}).get("orderId")
-            or f"FD-{uuid.uuid4().hex[:8].upper()}"
-        )
-        logs = _add_log(state, f"place_food_order OK · {food_order_id}")
-        for email in state.get("attendee_emails") or []:
-            await asyncio.to_thread(
-                record_dish_history,
-                email,
-                (staged_food["cartItems"][0].get("name") or "catering"),
-                staged_food.get("restaurantName") or "Food",
+        if staged_im.get("items"):
+            await mcp_client.call_tool_async(
+                "im",
+                "update_cart",
+                {
+                    "selectedAddressId": staged_im.get("selectedAddressId") or address_id,
+                    "items": [
+                        {"spinId": i["spinId"], "quantity": i["quantity"]}
+                        for i in staged_im["items"]
+                    ],
+                },
             )
+            checkout = await mcp_client.call_tool_async(
+                "im",
+                "checkout",
+                {"addressId": staged_im.get("selectedAddressId") or address_id},
+            )
+            im_order_id = str(
+                (checkout or {}).get("order_id")
+                or (checkout or {}).get("orderId")
+                or f"IM-{uuid.uuid4().hex[:8].upper()}"
+            )
+            logs = _add_log(state, f"Instamart checkout OK · {im_order_id}")
 
+        if staged_food.get("cartItems"):
+            await mcp_client.call_tool_async(
+                "food",
+                "update_food_cart",
+                {
+                    "restaurantId": staged_food.get("restaurantId"),
+                    "addressId": staged_food.get("addressId") or address_id,
+                    "cartItems": [
+                        {"itemId": c["itemId"], "quantity": c["quantity"]}
+                        for c in staged_food["cartItems"]
+                    ],
+                },
+            )
+            placed = await mcp_client.call_tool_async(
+                "food",
+                "place_food_order",
+                {"addressId": staged_food.get("addressId") or address_id},
+            )
+            food_order_id = str(
+                (placed or {}).get("order_id")
+                or (placed or {}).get("orderId")
+                or f"FD-{uuid.uuid4().hex[:8].upper()}"
+            )
+            logs = _add_log(state, f"place_food_order OK · {food_order_id}")
+            for email in state.get("attendee_emails") or []:
+                await asyncio.to_thread(
+                    record_dish_history,
+                    email,
+                    (staged_food["cartItems"][0].get("name") or "catering"),
+                    staged_food.get("restaurantName") or "Food",
+                )
+
+        state = {
+            **state,
+            "instamart_order_id": im_order_id,
+            "food_order_id": food_order_id,
+            "approval_status": "APPROVED",
+            "execution_logs": logs,
+        }
+
+    # Auto equal split + night-out receipt for night_out / dinner_party / flagged runs
+    if state.get("auto_split_bill") or state.get("trigger_type") in ("night_out", "dinner_party"):
+        state = await _emit_night_out_receipt(state)
+
+    return state
+
+
+async def _emit_night_out_receipt(state: ConciergeState) -> ConciergeState:
+    """Equal UPI split + QoL night_out_receipt for the Concierge Ops card."""
+    from app.services.bill_split import split_and_notify
+
+    attendees = list(state.get("attendee_emails") or [])
+    if not attendees:
+        return state
+
+    plan = state.get("dineout_plan") or {}
+    mode = state.get("mode") or "DINEOUT"
+    if mode == "DINEOUT":
+        total = float(
+            plan.get("estimated_cover_inr")
+            or state.get("total_estimated_cost")
+            or (state.get("cost_summary_breakdown") or {}).get("total_inr")
+            or 0
+        )
+        if total <= 0:
+            total = float(plan.get("costForTwo") or 2200) * max(2, int(plan.get("guestCount") or 2)) / 2
+        title = f"Night out · {state.get('dineout_restaurant_name') or 'Dineout'}"
+    else:
+        total = float(state.get("instamart_total") or 0) + float(state.get("food_total") or 0)
+        if total <= 0:
+            total = float((state.get("cost_summary_breakdown") or {}).get("total_inr") or 900)
+        title = state.get("event_title") or "Dinner party split"
+
+    if total <= 0:
+        return state
+
+    try:
+        split = await split_and_notify(
+            total,
+            attendees,
+            order_id=state.get("dineout_booking_id") or state.get("food_order_id"),
+            title=title,
+        )
+    except Exception as e:  # noqa: BLE001
+        log.warning("Auto bill split failed: %s", e)
+        return state
+
+    receipt = {
+        "kind": "night_out_receipt",
+        "title": title,
+        "mode": mode,
+        "venue": state.get("dineout_restaurant_name") or "Home",
+        "slot": state.get("dineout_slot"),
+        "booking_id": state.get("dineout_booking_id"),
+        "food_order_id": state.get("food_order_id"),
+        "instamart_order_id": state.get("instamart_order_id"),
+        "calendar_html_link": state.get("calendar_html_link") or plan.get("calendar_html_link"),
+        "calendar_mock": bool(state.get("calendar_mock")),
+        "maps_url": state.get("maps_url") or plan.get("maps_url"),
+        "attendee_emails": attendees,
+        "guest_count": plan.get("guestCount") or len(attendees),
+        "total_inr": split.get("total_inr"),
+        "shares": split.get("shares") or [],
+        "event_id": state.get("event_id"),
+        "approval_request_id": state.get("approval_request_id"),
+        "staged_food_cart": state.get("staged_food_cart"),
+    }
+    await asyncio.to_thread(
+        record_qol_event,
+        kind="night_out_receipt",
+        title=f"Receipt · {title}",
+        detail=f"Split ₹{split.get('total_inr')} · {len(attendees)} people",
+        severity="action",
+        event_id=state.get("event_id"),
+        meta=receipt,
+    )
+    logs = _add_log(state, f"Night-out receipt + split ₹{split.get('total_inr')}")
     return {
         **state,
-        "instamart_order_id": im_order_id,
-        "food_order_id": food_order_id,
-        "approval_status": "APPROVED",
+        "bill_split": split,
+        "night_out_receipt": receipt,
         "execution_logs": logs,
     }
 
@@ -685,28 +938,30 @@ async def calendar_mutate_node(state: ConciergeState) -> ConciergeState:
 
     parts = [
         state.get("event_description") or "",
-        "\n---",
-        "### Autonomous Swiggy Social Concierge",
-        f"**Mode:** `{mode}` · **Status:** `{status}`",
+        "",
+        "---",
+        "Autonomous Swiggy Social Concierge",
+        f"Mode: {mode} · Status: {status}",
     ]
     if status == "REJECTED":
-        parts.append("_User declined — carts cleared. No orders placed._")
+        parts.append("User declined — carts cleared. No orders placed.")
     elif mode == "DINEOUT":
         parts.extend(
             [
-                f"Venue: {state.get('dineout_restaurant_name')}",
-                f"Slot: {state.get('dineout_slot')}",
-                f"Booking ID: `{state.get('dineout_booking_id')}`",
+                f"Venue: {state.get('dineout_restaurant_name') or '—'}",
+                f"Slot: {state.get('dineout_slot') or '—'}",
+                f"Booking ID: {state.get('dineout_booking_id') or '—'}",
             ]
         )
     else:
         parts.extend(
             [
-                f"Instamart order: `{state.get('instamart_order_id')}`",
-                f"Food order: `{state.get('food_order_id')}`",
+                f"Instamart order: {state.get('instamart_order_id') or '—'}",
+                f"Food order: {state.get('food_order_id') or '—'}",
             ]
         )
-    parts.extend(["", rec_md])
+    if rec_md.strip():
+        parts.extend(["", rec_md.strip()])
     text = "\n".join(parts)
     if calendar_event_id:
         try:
