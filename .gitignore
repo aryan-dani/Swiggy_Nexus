@@ -17,3 +17,6 @@ backend/nexus_memory.db
 credentials/
 *.db
 nexus_*.db
+
+# Large local demo videos (share via Drive/Loom)
+docs/demo/*.mp4

@@ -63,7 +63,7 @@ function bonusRowFromAlts(round: number): NexusCardResult[] {
       description: pick.description,
       price: pick.price,
       offer: pick.offer ?? `Round ${round} pick`,
-      imageUrl: demoImageUrl(`${pick.imageSeed}-r${round}`),
+      imageUrl: demoImageUrl(`${pick.imageSeed}-r${round}`, 480, 320, type === "grocery" ? "grocery" : type === "dineout" ? "dine" : "food"),
       rating: type === "dineout" ? 4.5 : 4.4,
     });
   });
@@ -81,7 +81,7 @@ export default function McpFeed({
   watchParty,
   arenaSlot,
 }: McpFeedProps) {
-  const { activeFoodOrderId, activeImOrderId } = useNexusSession();
+  const { activeFoodOrderId, activeImOrderId, carts } = useNexusSession();
   const chronoBundle = items.find((i) => i.type === "event_bundle");
   const joinStrip = items.find((i) => i.type === "join_strip");
   const comfortCard = items.find((i) => i.type === "comfort_proposal");
@@ -171,15 +171,42 @@ export default function McpFeed({
 
   return (
     <div id="nexus-activity-rail" className="relative flex min-h-0 flex-col gap-4 pb-2">
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={neoSpring}>
-        <h2 className="nexus-section-title">
-          {chronoBundle ? "Chrono-Host bundle" : "Activity"}
-        </h2>
-        <p className="nexus-caption">
-          {chronoBundle
-            ? "Pinned bundle · confirm each leg below"
-            : "Staged MCP results appear here as tools run"}
-        </p>
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={neoSpring}
+        className="flex flex-wrap items-start justify-between gap-2"
+      >
+        <div>
+          <h2 className="nexus-section-title">
+            {chronoBundle ? "Chrono-Host bundle" : "Activity"}
+          </h2>
+          <p className="nexus-caption">
+            {chronoBundle
+              ? "Pinned bundle · confirm each leg below"
+              : "Staged MCP results appear here as tools run"}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={onOpenFoodCart}
+            className="inline-flex items-center gap-1 rounded-lg border-2 border-black bg-orange-50 px-2.5 py-1.5 font-display text-[10px] font-black uppercase shadow-[2px_2px_0_0_#000] hover:translate-x-px hover:translate-y-px hover:shadow-none"
+          >
+            <ShoppingCart className="h-3.5 w-3.5" />
+            Food cart
+            {carts.foodItems > 0 ? ` · ${carts.foodItems}` : ""}
+          </button>
+          <button
+            type="button"
+            onClick={onOpenImCart}
+            className="inline-flex items-center gap-1 rounded-lg border-2 border-black bg-emerald-50 px-2.5 py-1.5 font-display text-[10px] font-black uppercase shadow-[2px_2px_0_0_#000] hover:translate-x-px hover:translate-y-px hover:shadow-none"
+          >
+            <ShoppingCart className="h-3.5 w-3.5" />
+            IM cart
+            {carts.imItems > 0 ? ` · ${carts.imItems}` : ""}
+          </button>
+        </div>
       </motion.div>
 
       {arenaSlot && (

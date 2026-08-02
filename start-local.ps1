@@ -230,6 +230,7 @@ Write-Host "    UI   http://127.0.0.1:$UiPort"
 Write-Host "    Agent http://127.0.0.1:$ApiPort/api/concierge/agent"
 Write-Host ""
 Write-Host "    Preflight: .\backend\.venv\Scripts\python.exe scripts\demo_preflight.py" -ForegroundColor DarkGray
+    Write-Host "    Record:    .\run-demo-record.ps1  (teleprompter · full feature walkthrough)" -ForegroundColor DarkGray
     Write-Host "    Stop: .\stop-local.ps1  (or close the two Nexus windows / re-run this script)." -ForegroundColor DarkGray
 
 if (-not $NoBrowser) {

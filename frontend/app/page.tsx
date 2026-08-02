@@ -53,7 +53,10 @@ function HomeInner() {
     setDemo(loadDemoSettings());
   }, []);
 
-  const chatContext = useMemo(() => orchestrationContextFromSettings(demo), [demo]);
+  const chatContext = useMemo(
+    () => ({ ...orchestrationContextFromSettings(demo), requestId }),
+    [demo, requestId]
+  );
 
   const handleDemoPatch = useCallback((next: NexusDemoSettings) => {
     setDemo(next);

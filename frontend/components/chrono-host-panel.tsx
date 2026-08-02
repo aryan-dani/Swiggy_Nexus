@@ -20,6 +20,31 @@ type ChronoHostPanelProps = {
 
 const STEPS = ["Staged", "Confirmed", "Placed"] as const;
 
+type ImLine = {
+  name: string;
+  qty: number;
+  unit_price_inr: number;
+  line_total_inr: number;
+};
+
+function normalizeImLines(instamart: Record<string, unknown> | undefined): ImLine[] {
+  const raw = instamart?.items ?? instamart?.lines;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((row): row is Record<string, unknown> => !!row && typeof row === "object")
+    .map((row) => {
+      const qty = Number(row.qty ?? row.quantity ?? 1) || 1;
+      const unit = Number(row.unit_price_inr ?? row.price_inr ?? 0) || 0;
+      const line = Number(row.line_total_inr ?? unit * qty) || 0;
+      return {
+        name: String(row.name ?? row.spinId ?? "Item"),
+        qty,
+        unit_price_inr: unit,
+        line_total_inr: line,
+      };
+    });
+}
+
 function Leg({
   icon: Icon,
   label,
@@ -28,6 +53,7 @@ function Leg({
   accent,
   action,
   step,
+  lines,
 }: {
   icon: typeof Calendar;
   label: string;
@@ -36,6 +62,7 @@ function Leg({
   accent: string;
   action?: React.ReactNode;
   step: number;
+  lines?: ImLine[];
 }) {
   return (
     <div className={`flex flex-col gap-2 border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${accent}`}>
@@ -48,6 +75,21 @@ function Leg({
       </div>
       <p className="font-display text-sm font-black leading-tight text-black">{title}</p>
       <p className="text-xs font-medium leading-snug text-slate-700">{detail}</p>
+      {lines && lines.length > 0 ? (
+        <ul className="mt-1 space-y-0.5 border-t border-black/10 pt-2">
+          {lines.map((ln) => (
+            <li
+              key={`${ln.name}-${ln.qty}-${ln.line_total_inr}`}
+              className="flex items-baseline justify-between gap-2 font-mono text-[10px] text-slate-800"
+            >
+              <span className="min-w-0 truncate font-sans text-[11px] font-semibold">
+                {ln.name} <span className="font-mono font-normal text-slate-500">×{ln.qty}</span>
+              </span>
+              <span className="shrink-0">₹{ln.line_total_inr}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {action}
     </div>
   );
@@ -71,6 +113,7 @@ export function ChronoHostPanel({
     12;
 
   const [legSteps, setLegSteps] = useState<[number, number, number]>([0, 0, 0]);
+  const [busyLeg, setBusyLeg] = useState<"im" | "food" | null>(null);
 
   const guestCount = Number(guests) || 12;
   const imTotal = Number(instamart?.total ?? 0);
@@ -80,6 +123,7 @@ export function ChronoHostPanel({
   const budget = Number(meta.budgetInr ?? guestCount * 800);
   const spent = imTotal + foodTotal;
   const grandTotal = spent + dineEstimate;
+  const imLines = normalizeImLines(instamart);
 
   const dineTitle =
     typeof dineout?.restaurant === "string"
@@ -109,15 +153,34 @@ export function ChronoHostPanel({
     }
   };
 
-  const confirmGroceries = () => {
+  const confirmGroceries = async () => {
     setLegSteps((s) => [s[0], 1, s[2]]);
+    setBusyLeg("im");
+    const res = await callMcp("im", "checkout", { selectedAddressId }, requestId);
+    setBusyLeg(null);
+    if (res.success) {
+      setLegSteps((s) => [s[0], 2, s[2]]);
+      const oid =
+        res.data && typeof res.data === "object"
+          ? String(
+              (res.data as { order_id?: string; orderId?: string }).order_id
+                ?? (res.data as { orderId?: string }).orderId
+                ?? "placed"
+            )
+          : "placed";
+      nexusToast(`Instamart checkout · ${oid}`);
+      void refreshCarts();
+      return;
+    }
     onOpenImCart?.();
     onConfirmViaChat?.("confirm groceries");
   };
 
   const confirmDessert = async () => {
     setLegSteps((s) => [s[0], s[1], 1]);
+    setBusyLeg("food");
     const res = await callMcp("food", "place_order", { addressId: selectedAddressId }, requestId);
+    setBusyLeg(null);
     if (res.success) {
       setLegSteps((s) => [s[0], s[1], 2]);
       nexusToast("Dessert placed — 10 PM reminder is manual in v1");
@@ -191,10 +254,16 @@ export function ChronoHostPanel({
           detail={imTotal ? `Cart ₹${imTotal}` : "Staged supplies"}
           accent="bg-emerald-50"
           step={legSteps[1]}
+          lines={imLines}
           action={
             legSteps[1] < 2 ? (
-              <button type="button" className="mt-1 border-2 border-black bg-white px-2 py-1 text-[10px] font-black uppercase" onClick={confirmGroceries}>
-                Confirm groceries
+              <button
+                type="button"
+                disabled={busyLeg === "im"}
+                className="mt-1 border-2 border-black bg-white px-2 py-1 text-[10px] font-black uppercase disabled:opacity-50"
+                onClick={() => void confirmGroceries()}
+              >
+                {busyLeg === "im" ? "Checking out…" : "Confirm groceries"}
               </button>
             ) : null
           }
@@ -208,8 +277,13 @@ export function ChronoHostPanel({
           step={legSteps[2]}
           action={
             legSteps[2] < 2 ? (
-              <button type="button" className="mt-1 border-2 border-black bg-white px-2 py-1 text-[10px] font-black uppercase" onClick={() => void confirmDessert()}>
-                Confirm dessert
+              <button
+                type="button"
+                disabled={busyLeg === "food"}
+                className="mt-1 border-2 border-black bg-white px-2 py-1 text-[10px] font-black uppercase disabled:opacity-50"
+                onClick={() => void confirmDessert()}
+              >
+                {busyLeg === "food" ? "Placing…" : "Confirm dessert"}
               </button>
             ) : null
           }
@@ -223,6 +297,7 @@ export function ChronoHostPanel({
           <SplitBillButton
             totalInr={grandTotal}
             title={`Evening bundle · ${guestCount} guests`}
+            notifyTelegram={false}
           />
         )}
       </div>

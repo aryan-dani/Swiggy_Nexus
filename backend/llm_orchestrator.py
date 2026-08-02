@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import uuid
 from typing import Any, Generator
 
 from backend.mcp_client import call_tool, LocalMCPError
@@ -274,8 +273,21 @@ def _dispatch_named_tool(
         args["requestId"] = session_id
     if "request_id" in args:
         args["request_id"] = session_id
+    # Always pin cart mutations to the UI session (stage → confirm).
+    if "requestId" not in args and "request_id" not in args:
+        args["requestId"] = session_id
     data = call_tool(vertical, method, args)
     return vertical, method, data
+
+
+def _resolve_mcp_session_id(ctx: dict[str, Any] | None) -> str:
+    """Align LLM tool carts with the frontend Nexus requestId."""
+    ctx = ctx or {}
+    for key in ("requestId", "request_id", "sessionId", "session_id"):
+        val = ctx.get(key)
+        if val and str(val).strip():
+            return str(val).strip()
+    return "default_mock_session"
 
 
 def _run_openai_compat_loop(
@@ -285,9 +297,10 @@ def _run_openai_compat_loop(
     system_prompt: str,
     model: str,
     banner: str,
+    session_id: str | None = None,
 ) -> Generator[dict[str, Any], None, None]:
     """Shared sync tool loop for Groq and Ollama (OpenAI-compatible chat API)."""
-    session_id = str(uuid.uuid4())
+    session_id = session_id or "default_mock_session"
     yield {"type": "thinking", "payload": {"text": banner}}
 
     messages: list[Any] = [
@@ -388,6 +401,7 @@ def _run_groq_loop(
     system_prompt: str,
     api_key: str,
     model: str,
+    session_id: str | None = None,
 ) -> Generator[dict[str, Any], None, None]:
     from groq import Groq
 
@@ -398,6 +412,7 @@ def _run_groq_loop(
         system_prompt=system_prompt,
         model=model,
         banner=f"Groq {model} · agentic MCP tool loop (fallback)",
+        session_id=session_id,
     )
 
 
@@ -407,6 +422,7 @@ def _run_ollama_loop(
     system_prompt: str,
     base_url: str,
     model: str,
+    session_id: str | None = None,
 ) -> Generator[dict[str, Any], None, None]:
     from openai import OpenAI
 
@@ -418,6 +434,7 @@ def _run_ollama_loop(
         system_prompt=system_prompt,
         model=model,
         banner=f"Ollama {model} · agentic MCP tool loop",
+        session_id=session_id,
     )
 
 
@@ -427,6 +444,7 @@ def _run_gemini_loop(
     system_prompt: str,
     api_key: str,
     model: str,
+    session_id: str | None = None,
 ) -> Generator[dict[str, Any], None, None]:
     from google import genai
     from google.genai import types
@@ -440,7 +458,7 @@ def _run_gemini_loop(
 
     client = genai.Client(api_key=api_key)
     declarations = _gemini_declarations(types)
-    session_id = str(uuid.uuid4())
+    session_id = session_id or "default_mock_session"
 
     yield {
         "type": "thinking",
@@ -548,8 +566,63 @@ def _run_gemini_loop(
 
 
 def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generator[dict[str, Any], None, None]:
-    ctx = context or {}
+    ctx = dict(context or {})
+    mcp_session = _resolve_mcp_session_id(ctx)
+    # Ensure deterministic Chrono confirm legs see the same session key.
+    ctx.setdefault("requestId", mcp_session)
     gemini_key, gemini_model, groq_key, groq_model, ollama_base, ollama_model, provider = _env_keys()
+
+    # 60s WOW / Chrono-Host must stay on the deterministic multi-vertical script.
+    # Free-form LLM tool loops burn rounds on search_restaurants/search_menu and
+    # end with "ran out of tool steps" — which breaks the Demo Director recording.
+    # Confirm legs also stay here: web Beat 1 must never stage Telegram HITL.
+    msg_low = (user_message or "").lower()
+    is_chrono_confirm = any(
+        k in msg_low
+        for k in (
+            "confirm table",
+            "confirm groceries",
+            "confirm grocery",
+            "confirm dessert",
+        )
+    )
+    force_chrono = (
+        ctx.get("scenario") == "chrono_host"
+        or is_chrono_confirm
+        or any(
+            k in msg_low
+            for k in (
+                "plan my evening",
+                "plan my housewarming",
+                "plan a festive",
+                "plan a team dinner",
+                "plan a date-night",
+                "plan a date night",
+                "chrono host",
+                "dinner out and dessert",
+                "thali energy",
+                "for 12 guests",
+                "housewarming evening",
+            )
+        )
+    )
+    if force_chrono:
+        from backend.agent import run_agent_stream as deterministic
+
+        if not is_chrono_confirm:
+            ctx["scenario"] = "chrono_host"
+        yield {
+            "type": "thinking",
+            "payload": {
+                "text": (
+                    "Chrono-Host · confirm leg (browser-only — no Telegram)"
+                    if is_chrono_confirm
+                    else "Chrono-Host · deterministic 3-vertical orchestrator (Dineout + Instamart + Food)"
+                )
+            },
+        }
+        yield from deterministic(user_message, ctx)
+        return
 
     # Local rehearsal: never touch Gemini/Groq when LLM_PROVIDER=ollama.
     if provider == "ollama":
@@ -569,6 +642,7 @@ def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generato
                 system_prompt=system_prompt,
                 base_url=ollama_base,
                 model=ollama_model,
+                session_id=mcp_session,
             )
         except Exception as e:  # noqa: BLE001
             msg = (
@@ -595,7 +669,7 @@ def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generato
         }
         from backend.agent import run_agent_stream as fallback
 
-        yield from fallback(user_message, context)
+        yield from fallback(user_message, ctx)
         return
 
     prefs = get_user_preferences()
@@ -611,6 +685,7 @@ def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generato
                     system_prompt=system_prompt,
                     api_key=gemini_key,
                     model=candidate,
+                    session_id=mcp_session,
                 )
                 return
             except Exception as e:  # noqa: BLE001
@@ -645,13 +720,14 @@ def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generato
             }
             from backend.agent import run_agent_stream as fallback
 
-            yield from fallback(user_message, context)
+            yield from fallback(user_message, ctx)
             return
         yield from _run_groq_loop(
             user_message=user_message,
             system_prompt=system_prompt,
             api_key=groq_key,
             model=groq_model,
+            session_id=mcp_session,
         )
         return
 
@@ -661,4 +737,4 @@ def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generato
     }
     from backend.agent import run_agent_stream as fallback
 
-    yield from fallback(user_message, context)
+    yield from fallback(user_message, ctx)

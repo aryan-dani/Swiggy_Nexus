@@ -90,6 +90,7 @@ async def split_and_notify(
     *,
     order_id: str | None = None,
     title: str = "Bill split",
+    notify: bool = True,
 ) -> dict[str, Any]:
     result = compute_split(total_inr, attendees, note=title)
 
@@ -98,15 +99,22 @@ async def split_and_notify(
         host = " (host)" if s["is_host"] else ""
         lines.append(f"• {s['name']}{host}: ₹{s['amount_inr']}")
     lines.append("Tap-to-pay links are demo UPI handles — no real collection.")
-    await send_qol_prompt("\n".join(lines))
+    # Chrono-Host / WOW web surface passes notify=False so Beat 1 stays phone-silent.
+    if notify:
+        await send_qol_prompt("\n".join(lines))
+    else:
+        print("\n[QoL PROMPT · telegram suppressed]\n" + "\n".join(lines) + "\n")
 
     record_qol_event(
         kind="bill_split",
         title=f"{title} · ₹{result['total_inr']} / {result['attendee_count']}",
         detail=order_id or "",
         severity="info",
-        meta={"shares": [
-            {"name": s["name"], "amount_inr": s["amount_inr"]} for s in result["shares"]
-        ]},
+        meta={
+            "shares": [
+                {"name": s["name"], "amount_inr": s["amount_inr"]} for s in result["shares"]
+            ],
+            "telegram_notified": bool(notify),
+        },
     )
     return result

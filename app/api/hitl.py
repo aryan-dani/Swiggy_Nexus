@@ -111,7 +111,9 @@ async def process_telegram_update(data: dict[str, Any]) -> dict[str, str]:
             "Swiggy Nexus concierge.\n"
             "Just talk to me normally — 'order paneer biryani', 'book a table for 4 "
             "tonight', 'get milk and bread'. Voice notes work too.\n"
-            "Night out: /nightout — I'll walk you through guests → restaurant → time.\n"
+            "Night out: say it in plain English (or voice) — e.g. "
+            "'Plan a night out with friends this Saturday — dinner then drinks, "
+            "then split the bill' — or /nightout for the guided wizard.\n"
             "I stage everything and wait for your Approve tap before spending.\n"
             f"Brain: {active_provider_label()}\n"
             "Commands: /nightout · /status · /guests 6 · /fuel · /approve REQ-… · /reject REQ-…",
@@ -288,8 +290,10 @@ async def register_telegram_webhook() -> None:
         return
 
     if _is_local_base():
+        # Drop pending updates so a prior chat / leftover voice note does not
+        # suddenly fire "Thinking…" / Approve mid Beat-1 (browser-only WOW).
         log.info("Local BASE_URL — starting Telegram long-poll (callbacks work without ngrok)")
-        await _delete_webhook()
+        await _delete_webhook(drop_pending=True)
         start_telegram_poller()
         return
 
@@ -300,10 +304,10 @@ async def register_telegram_webhook() -> None:
         log.info("Telegram webhook register: %s %s", resp.status_code, resp.text[:200])
 
 
-async def _delete_webhook() -> None:
+async def _delete_webhook(*, drop_pending: bool = False) -> None:
     url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/deleteWebhook"
     async with httpx.AsyncClient(timeout=15.0) as client:
-        await client.post(url, json={"drop_pending_updates": False})
+        await client.post(url, json={"drop_pending_updates": drop_pending})
 
 
 async def _poll_loop() -> None:

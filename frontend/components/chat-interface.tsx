@@ -65,6 +65,44 @@ const VERT_CHIP: Record<ToolChip["vertical"], string> = {
   other: "border-slate-300 bg-slate-50 text-slate-700",
 };
 
+/** Friendly follow-ups under the last assistant reply (not raw MCP method chips). */
+function followUpSuggestions(msgs: Msg[]): string[] {
+  const lastUser = [...msgs].reverse().find((m) => m.role === "user")?.text || "";
+  const lastAsst = [...msgs].reverse().find((m) => m.role === "assistant")?.text || "";
+  const blob = `${lastUser} ${lastAsst}`.toLowerCase();
+  const out: string[] = [];
+  const push = (q: string) => {
+    if (!out.includes(q) && out.length < 4) out.push(q);
+  };
+
+  if (/gelato|dessert|icecream|ice cream/.test(blob)) {
+    push("Order pistachio gelato for delivery");
+    push("Add dessert supplies on Instamart");
+  }
+  if (/domino|pizza/.test(blob)) {
+    push("Open Domino's menu");
+    push("Add a Margherita medium to my cart");
+  }
+  if (/book|table|restaurant|dine|party of|people/.test(blob)) {
+    push("Book a table for 5 at 8 PM");
+    push("Show Italian restaurants nearby");
+    push("What slots are open tonight?");
+  }
+  if (/malaka|asian|thai/.test(blob)) {
+    push("Reserve Malaka Spice terrace");
+  }
+  if (/snack|chips|instamart|grocery|restock/.test(blob)) {
+    push("Restock snacks on Instamart");
+    push("Add cola and chips to IM cart");
+  }
+
+  push("Find biryani near me");
+  push("Plan a night out with friends");
+  push("Restock milk and bread on Instamart");
+  push("Split the bill for dinner");
+  return out.slice(0, 4);
+}
+
 export type ChatInterfaceProps = {
   onFeedItems: (items: FeedItem[]) => void;
   devMode: boolean;
@@ -150,7 +188,7 @@ export default function ChatInterface({
       const text = (overrideText ?? input).trim();
       if (!text || busy) return;
 
-      if (!overrideText) setInput("");
+      setInput("");
       setBusy(true);
       setThinking([]);
       setLiveTool(null);
@@ -400,6 +438,27 @@ export default function ChatInterface({
           </div>
         )}
 
+        {!busy && msgs.some((m) => m.role === "assistant") && (
+          <div className="space-y-1.5">
+            <p className="font-display text-[10px] font-black uppercase tracking-widest text-slate-500">
+              Try asking
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {followUpSuggestions(msgs).map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void runSend(q)}
+                  className="rounded-full border-2 border-black bg-white px-3 py-1.5 text-left font-sans text-[11px] font-semibold text-slate-800 shadow-[2px_2px_0_0_#000] hover:translate-x-px hover:translate-y-px hover:bg-indigo-50 hover:shadow-none disabled:opacity-50"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <AnimatePresence>
           {busy && (
             <motion.div
@@ -519,13 +578,12 @@ export default function ChatInterface({
           <VoiceMicButton
             disabled={busy}
             onTranscript={(text) => {
-              setInput(text);
               void runSend(text);
             }}
           />
           <input
             autoFocus
-            className="min-w-0 flex-1 border-none bg-transparent py-2.5 font-sans text-sm font-medium text-black outline-none placeholder:text-slate-400"
+            className="min-w-0 flex-1 border-none bg-transparent py-2.5 font-sans text-sm font-medium text-black outline-none ring-0 ring-offset-0 placeholder:text-slate-400 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
             placeholder="Ask Nexus…"
             value={input}
             disabled={busy}

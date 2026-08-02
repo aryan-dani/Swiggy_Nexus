@@ -473,6 +473,8 @@ class SplitBody(BaseModel):
     attendees: list[str]
     order_id: str | None = None
     title: str = "Bill split"
+    # False = Chrono-Host / WOW web (Beat 1) — compute shares in UI only, no Telegram push.
+    notify: bool = True
 
 
 @router.post("/api/concierge/split")
@@ -484,6 +486,7 @@ async def concierge_split(body: SplitBody) -> dict[str, Any]:
             body.attendees,
             order_id=body.order_id,
             title=body.title,
+            notify=body.notify,
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e

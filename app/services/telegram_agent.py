@@ -24,13 +24,19 @@ from app.services.llm import (
     active_provider_label,
     run_tool_conversation,
 )
-from backend.tool_schemas import TELEGRAM_TOOLS_FOR_LLM
 from app.services.night_out import plan_dinner_party, plan_night_out
+from backend.memory import get_conversation_history, save_turn
+from backend.tool_schemas import TELEGRAM_TOOLS_FOR_LLM
 
 log = logging.getLogger(__name__)
 
 HISTORY_TURNS = 6
 MAX_TOOL_ROUNDS = 6
+
+# Exact camera line for Beat 2 (voice). Close paraphrases also match.
+DEMO_NIGHT_OUT_SENTENCE = (
+    "Plan a night out with friends this Saturday — dinner then drinks, then split the bill"
+)
 
 # Money tools — never executed by the model.
 WRITE_TOOLS = {"food_place_order", "im_checkout", "dineout_book_table"}
@@ -339,6 +345,112 @@ async def _stage_write_tool(
 
 
 # ---------------------------------------------------------------------------
+# Night Out NL short-circuit (demo Beat 2 — no LLM tool loop)
+# ---------------------------------------------------------------------------
+
+
+def _norm_intent_tokens(text: str) -> list[str]:
+    cleaned = "".join(
+        ch.lower() if ch.isalnum() or ch.isspace() else " " for ch in (text or "")
+    )
+    return cleaned.split()
+
+
+def looks_like_night_out_intent(text: str) -> bool:
+    """True for the demo sentence and close paraphrases — deterministic, no LLM."""
+    tokens = _norm_intent_tokens(text)
+    if not tokens:
+        return False
+    blob = " ".join(tokens)
+    has_night_out = "night out" in blob or "nightout" in blob.replace(" ", "")
+    has_plan = any(w in tokens for w in ("plan", "planning", "planned", "organize", "book"))
+    has_friends = "friends" in tokens or "friend" in tokens
+    has_dinner_drinks = "dinner" in tokens and ("drink" in blob or "drinks" in tokens)
+    has_split = "split" in tokens and ("bill" in tokens or "bills" in tokens)
+    # Exact-ish demo line (voice ASR may drop em dash / punctuation)
+    if has_night_out and (has_friends or has_dinner_drinks or has_split):
+        return True
+    if has_plan and has_night_out:
+        return True
+    if has_dinner_drinks and has_split and ("saturday" in tokens or has_friends):
+        return True
+    return False
+
+
+async def _short_circuit_night_out(
+    chat_id: Any,
+    text: str,
+    *,
+    status_id: int | None,
+    source: str,
+) -> dict[str, Any]:
+    """Stage Calendar + table + split with Taste Vault defaults — then HITL Approve."""
+    session_key = f"tg:{chat_id}"
+    await _edit(chat_id, status_id, "🌙 Planning night out…")
+    await _typing(chat_id)
+
+    result = await plan_night_out(
+        guest_names=["himali", "siya", "swayam"],
+        preferred_slot="20:00",
+    )
+    rid = result.get("approval_request_id")
+    venue = result.get("venue") or "6 Digs"
+    guests = result.get("guest_count") or 4
+
+    await _edit(
+        chat_id,
+        status_id,
+        f"✅ Night out staged · {venue} · {guests} guests",
+    )
+
+    body = (
+        f"⏸ Night out staged\n"
+        f"{venue} · Saturday · {guests} guests · dinner then drinks\n"
+        f"Calendar + table + equal split ready.\n"
+        f"Nothing booked until you Approve."
+    )
+    if rid:
+        body += f"\n({rid})"
+        await _send(
+            chat_id,
+            body,
+            reply_markup={
+                "inline_keyboard": [
+                    [
+                        {"text": "✅ Approve", "callback_data": f"approve:{rid}"},
+                        {"text": "❌ Reject", "callback_data": f"reject:{rid}"},
+                    ]
+                ]
+            },
+        )
+    else:
+        await _send(chat_id, body + "\n\nOpen Concierge Ops to approve.")
+
+    reply = (
+        f"Night out at {venue} is staged for approval "
+        f"({guests} guests, equal bill split)."
+    )
+    save_turn(session_key, "user", text)
+    save_turn(session_key, "assistant", reply)
+    record_qol_event(
+        kind="agent_reply",
+        title=f"Night-out short-circuit ({source})",
+        detail=f"deterministic · {rid or 'no-rid'}",
+        severity="info",
+        meta={"short_circuit": "night_out", "approval_request_id": rid},
+        event_id=session_key,
+    )
+    return {
+        "ok": True,
+        "provider": "deterministic",
+        "tools": ["nexus_plan_night_out"],
+        "halted": True,
+        "short_circuit": "night_out",
+        "approval_request_id": rid,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Agent entry point
 # ---------------------------------------------------------------------------
 
@@ -348,173 +460,212 @@ async def run_telegram_agent(chat_id: Any, text: str, *, source: str = "text") -
     session_key = f"tg:{chat_id}"
     await _typing(chat_id)
     status_id = await _send(chat_id, "🧠 Thinking…")
+    status_cleared = False
 
-    trail: list[str] = []
+    async def _clear_status(msg: str) -> None:
+        nonlocal status_cleared
+        if status_id and not status_cleared:
+            await _edit(chat_id, status_id, msg)
+            status_cleared = True
 
-    async def on_tool_start(name: str, args: dict[str, Any]) -> None:
-        caption = _TOOL_CAPTIONS.get(name, name)
-        trail.append(f"• {caption}")
-        await _typing(chat_id)
-        await _edit(chat_id, status_id, "🧠 Working…\n" + "\n".join(trail[-6:]))
+    try:
+        # Demo Beat 2: NL / voice night-out → skip flaky LLM tool loops entirely.
+        if looks_like_night_out_intent(text):
+            out = await _short_circuit_night_out(
+                chat_id, text, status_id=status_id, source=source
+            )
+            status_cleared = True
+            return out
+
+        trail: list[str] = []
+
+        async def on_tool_start(name: str, args: dict[str, Any]) -> None:
+            caption = _TOOL_CAPTIONS.get(name, name)
+            trail.append(f"• {caption}")
+            await _typing(chat_id)
+            await _edit(chat_id, status_id, "🧠 Working…\n" + "\n".join(trail[-6:]))
+            record_qol_event(
+                kind="agent_tool",
+                title=f"Agent · {name}",
+                detail=caption,
+                severity="info",
+                meta={"tool": name, "args": args, "surface": "telegram"},
+                event_id=session_key,
+            )
+
+        async def execute_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
+            if name == "nexus_plan_night_out":
+                guests = args.get("guests") or args.get("guest_names") or []
+                if isinstance(guests, str):
+                    guests = [
+                        g.strip()
+                        for g in guests.replace(" and ", ",").split(",")
+                        if g.strip()
+                    ]
+                venue = str(args.get("venue") or "").strip()
+                slot = str(args.get("slot") or args.get("preferred_slot") or "").strip()
+                start_iso = args.get("start_iso")
+                # Incomplete → walk the user through the wizard instead of inventing 6 Digs.
+                if not venue or (not slot and not start_iso):
+                    from app.services.telegram_night_out import begin_night_out_wizard
+
+                    await begin_night_out_wizard(
+                        chat_id,
+                        hint="Let's plan this properly — I'll ask guests, restaurant, then time.",
+                    )
+                    return {HALT_KEY: True, "status": "wizard_started"}
+                result = await plan_night_out(
+                    guest_names=list(guests),
+                    venue=venue,
+                    venue_query=str(args.get("venue_query") or venue),
+                    guest_count=args.get("guest_count"),
+                    start_iso=str(start_iso) if start_iso else None,
+                    preferred_slot=slot or None,
+                )
+                result[HALT_KEY] = True
+                rid = result.get("approval_request_id")
+                if rid:
+                    await _send(
+                        chat_id,
+                        f"⏸ Night out staged\n"
+                        f"{result.get('venue')} · {result.get('guest_count')} guests"
+                        f"{(' · ' + slot) if slot else ''}\n"
+                        f"Calendar + table ready. Approve in Concierge or tap below.\n"
+                        f"({rid})",
+                        reply_markup={
+                            "inline_keyboard": [
+                                [
+                                    {"text": "✅ Approve", "callback_data": f"approve:{rid}"},
+                                    {"text": "❌ Reject", "callback_data": f"reject:{rid}"},
+                                ]
+                            ]
+                        },
+                    )
+                return result
+            if name == "nexus_plan_dinner_party":
+                guests = args.get("guests") or []
+                if isinstance(guests, str):
+                    guests = [
+                        g.strip()
+                        for g in guests.replace(" and ", ",").split(",")
+                        if g.strip()
+                    ]
+                result = await plan_dinner_party(
+                    guest_names=list(guests),
+                    dish_query=str(args.get("dish_query") or "paneer biryani"),
+                    guest_count=args.get("guest_count"),
+                )
+                result[HALT_KEY] = True
+                rid = result.get("approval_request_id")
+                if rid:
+                    await _send(
+                        chat_id,
+                        f"⏸ Dinner party staged\n"
+                        f"{result.get('guest_count')} guests · Approve to order + split\n"
+                        f"({rid})",
+                        reply_markup={
+                            "inline_keyboard": [
+                                [
+                                    {"text": "✅ Approve", "callback_data": f"approve:{rid}"},
+                                    {"text": "❌ Reject", "callback_data": f"reject:{rid}"},
+                                ]
+                            ]
+                        },
+                    )
+                return result
+            if name in WRITE_TOOLS:
+                return await _stage_write_tool(chat_id, name, args)
+            vertical, method = _split_tool(name)
+            params = _with_defaults(vertical, method, args)
+            try:
+                data = await mcp_client.call_tool_async(vertical, method, params)
+            except SwiggyMCPError as e:
+                return {"status": "error", "code": e.code, "message": e.message}
+            except Exception as e:  # noqa: BLE001
+                return {"status": "error", "message": str(e)}
+            return data if isinstance(data, dict) else {"result": data}
+
+        history = [
+            {"role": turn["role"], "content": turn["content"]}
+            for turn in get_conversation_history(session_key, limit=HISTORY_TURNS)
+        ]
+
+        try:
+            result = await run_tool_conversation(
+                system_prompt=_system_prompt(),
+                user_message=text,
+                execute_tool=execute_tool,
+                history=history,
+                on_tool_start=on_tool_start,
+                max_rounds=MAX_TOOL_ROUNDS,
+                tools=TELEGRAM_TOOLS_FOR_LLM,
+            )
+        except LLMUnavailable as e:
+            await _clear_status(f"⚠️ {e}")
+            return {"ok": False, "reason": "llm_unavailable"}
+        except Exception as e:  # noqa: BLE001
+            log.exception("Telegram agent failed")
+            blob = str(e).lower()
+            if "rate_limit" in blob or "429" in blob or "quota" in blob:
+                note = (
+                    "⚠️ My LLM quota is exhausted for now. Set GEMINI_API_KEY for the primary "
+                    "brain, or wait for the Groq limit to reset. "
+                    f"(Configured brain: {active_provider_label()})"
+                )
+            else:
+                note = "⚠️ My planner hiccuped mid-step. Say that again and I'll retry."
+            await _clear_status(note)
+            record_qol_event(
+                kind="agent_error",
+                title="Telegram agent error",
+                detail=str(e)[:200],
+                severity="warn",
+                event_id=session_key,
+            )
+            return {"ok": False, "reason": "agent_error"}
+
+        tool_count = len(result.tool_names)
+        footer = f"\n\n— {active_provider_label()} · {tool_count} MCP tool" + (
+            "s" if tool_count != 1 else ""
+        )
+        reply = result.text or "Done."
+
+        if trail:
+            await _clear_status("✅ Ran:\n" + "\n".join(trail[-6:]))
+        else:
+            await _clear_status("✅ Done")
+
+        await _send(chat_id, reply + footer)
+
+        save_turn(session_key, "user", text)
+        save_turn(session_key, "assistant", reply)
+
         record_qol_event(
-            kind="agent_tool",
-            title=f"Agent · {name}",
-            detail=caption,
+            kind="agent_reply",
+            title=f"Agent replied on Telegram ({source})",
+            detail=f"{tool_count} tools · {result.provider}",
             severity="info",
-            meta={"tool": name, "args": args, "surface": "telegram"},
+            meta={"tools": result.tool_names, "provider": result.provider},
             event_id=session_key,
         )
 
-    async def execute_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
-        if name == "nexus_plan_night_out":
-            guests = args.get("guests") or args.get("guest_names") or []
-            if isinstance(guests, str):
-                guests = [g.strip() for g in guests.replace(" and ", ",").split(",") if g.strip()]
-            venue = str(args.get("venue") or "").strip()
-            slot = str(args.get("slot") or args.get("preferred_slot") or "").strip()
-            start_iso = args.get("start_iso")
-            # Incomplete → walk the user through the wizard instead of inventing 6 Digs.
-            if not venue or (not slot and not start_iso):
-                from app.services.telegram_night_out import begin_night_out_wizard
-
-                await begin_night_out_wizard(
-                    chat_id,
-                    hint="Let's plan this properly — I'll ask guests, restaurant, then time.",
-                )
-                return {HALT_KEY: True, "status": "wizard_started"}
-            result = await plan_night_out(
-                guest_names=list(guests),
-                venue=venue,
-                venue_query=str(args.get("venue_query") or venue),
-                guest_count=args.get("guest_count"),
-                start_iso=str(start_iso) if start_iso else None,
-                preferred_slot=slot or None,
-            )
-            result[HALT_KEY] = True
-            rid = result.get("approval_request_id")
-            if rid:
-                await _send(
-                    chat_id,
-                    f"⏸ Night out staged\n"
-                    f"{result.get('venue')} · {result.get('guest_count')} guests"
-                    f"{(' · ' + slot) if slot else ''}\n"
-                    f"Calendar + table ready. Approve in Concierge or tap below.\n"
-                    f"({rid})",
-                    reply_markup={
-                        "inline_keyboard": [
-                            [
-                                {"text": "✅ Approve", "callback_data": f"approve:{rid}"},
-                                {"text": "❌ Reject", "callback_data": f"reject:{rid}"},
-                            ]
-                        ]
-                    },
-                )
-            return result
-        if name == "nexus_plan_dinner_party":
-            guests = args.get("guests") or []
-            if isinstance(guests, str):
-                guests = [g.strip() for g in guests.replace(" and ", ",").split(",") if g.strip()]
-            result = await plan_dinner_party(
-                guest_names=list(guests),
-                dish_query=str(args.get("dish_query") or "paneer biryani"),
-                guest_count=args.get("guest_count"),
-            )
-            result[HALT_KEY] = True
-            rid = result.get("approval_request_id")
-            if rid:
-                await _send(
-                    chat_id,
-                    f"⏸ Dinner party staged\n"
-                    f"{result.get('guest_count')} guests · Approve to order + split\n"
-                    f"({rid})",
-                    reply_markup={
-                        "inline_keyboard": [
-                            [
-                                {"text": "✅ Approve", "callback_data": f"approve:{rid}"},
-                                {"text": "❌ Reject", "callback_data": f"reject:{rid}"},
-                            ]
-                        ]
-                    },
-                )
-            return result
-        if name in WRITE_TOOLS:
-            return await _stage_write_tool(chat_id, name, args)
-        vertical, method = _split_tool(name)
-        params = _with_defaults(vertical, method, args)
-        try:
-            data = await mcp_client.call_tool_async(vertical, method, params)
-        except SwiggyMCPError as e:
-            return {"status": "error", "code": e.code, "message": e.message}
-        except Exception as e:  # noqa: BLE001
-            return {"status": "error", "message": str(e)}
-        return data if isinstance(data, dict) else {"result": data}
-
-    history = [
-        {"role": turn["role"], "content": turn["content"]}
-        for turn in get_conversation_history(session_key, limit=HISTORY_TURNS)
-    ]
-
-    try:
-        result = await run_tool_conversation(
-            system_prompt=_system_prompt(),
-            user_message=text,
-            execute_tool=execute_tool,
-            history=history,
-            on_tool_start=on_tool_start,
-            max_rounds=MAX_TOOL_ROUNDS,
-            tools=TELEGRAM_TOOLS_FOR_LLM,
-        )
-    except LLMUnavailable as e:
-        await _edit(chat_id, status_id, f"⚠️ {e}")
-        return {"ok": False, "reason": "llm_unavailable"}
-    except Exception as e:  # noqa: BLE001
-        log.exception("Telegram agent failed")
-        blob = str(e).lower()
-        if "rate_limit" in blob or "429" in blob or "quota" in blob:
-            note = (
-                "⚠️ My LLM quota is exhausted for now. Set GEMINI_API_KEY for the primary "
-                "brain, or wait for the Groq limit to reset."
-            )
-        else:
-            note = "⚠️ My planner hiccuped mid-step. Say that again and I'll retry."
-        await _edit(chat_id, status_id, note)
+        return {
+            "ok": True,
+            "provider": result.provider,
+            "tools": result.tool_names,
+            "halted": result.halted,
+        }
+    except Exception as e:  # noqa: BLE001 — never leave a permanent Thinking bubble
+        log.exception("Telegram agent crashed before reply")
+        await _clear_status("⚠️ Something broke mid-step. Say that again and I'll retry.")
         record_qol_event(
             kind="agent_error",
-            title="Telegram agent error",
+            title="Telegram agent crash",
             detail=str(e)[:200],
             severity="warn",
             event_id=session_key,
         )
-        return {"ok": False, "reason": "agent_error"}
-
-    tool_count = len(result.tool_names)
-    footer = f"\n\n— {active_provider_label()} · {tool_count} MCP tool" + (
-        "s" if tool_count != 1 else ""
-    )
-    reply = result.text or "Done."
-
-    if status_id and trail:
-        await _edit(chat_id, status_id, "✅ Ran:\n" + "\n".join(trail[-6:]))
-    elif status_id:
-        await _edit(chat_id, status_id, "✅ Done")
-
-    await _send(chat_id, reply + footer)
-
-    save_turn(session_key, "user", text)
-    save_turn(session_key, "assistant", reply)
-
-    record_qol_event(
-        kind="agent_reply",
-        title=f"Agent replied on Telegram ({source})",
-        detail=f"{tool_count} tools · {result.provider}",
-        severity="info",
-        meta={"tools": result.tool_names, "provider": result.provider},
-        event_id=session_key,
-    )
-
-    return {
-        "ok": True,
-        "provider": result.provider,
-        "tools": result.tool_names,
-        "halted": result.halted,
-    }
+        return {"ok": False, "reason": "agent_crash", "error": str(e)[:200]}
+    finally:
+        if status_id and not status_cleared:
+            await _edit(chat_id, status_id, "⚠️ Interrupted — try again.")

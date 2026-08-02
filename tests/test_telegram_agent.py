@@ -221,3 +221,73 @@ def test_voice_note_transcribes_then_runs_agent(monkeypatch: pytest.MonkeyPatch)
     )
     assert out == {"ok": "voice"}
     assert seen == {"text": "get me milk and bread", "source": "voice"}
+
+
+def test_night_out_intent_matches_demo_sentence():
+    assert ta.looks_like_night_out_intent(ta.DEMO_NIGHT_OUT_SENTENCE)
+    assert ta.looks_like_night_out_intent(
+        "plan a night out with friends this saturday dinner then drinks then split the bill"
+    )
+    assert ta.looks_like_night_out_intent("Can we plan a night out with friends?")
+    assert not ta.looks_like_night_out_intent("order a paneer biryani for dinner")
+    assert not ta.looks_like_night_out_intent("get me milk and bread")
+
+
+def test_memory_helpers_importable_from_telegram_agent():
+    """Regression: NameError on get_conversation_history left Thinking forever."""
+    from backend.memory import get_conversation_history, save_turn
+
+    assert callable(get_conversation_history)
+    assert callable(save_turn)
+    # Module must bind the same helpers (not leave them unbound locals).
+    assert ta.get_conversation_history is get_conversation_history
+    assert ta.save_turn is save_turn
+
+
+def test_night_out_short_circuit_skips_llm(monkeypatch: pytest.MonkeyPatch, _quiet_telegram):
+    """Demo NL sentence must stage Night Out without run_tool_conversation."""
+    called_llm = {"n": 0}
+
+    async def boom(*_a, **_k):
+        called_llm["n"] += 1
+        raise AssertionError("LLM must not run for night-out short-circuit")
+
+    async def fake_plan(**kwargs):
+        return {
+            "status": "awaiting_approval",
+            "venue": "6 Digs · Kothrud",
+            "guest_count": 4,
+            "approval_request_id": "REQ-TEST-NO",
+        }
+
+    monkeypatch.setattr(ta, "run_tool_conversation", boom)
+    monkeypatch.setattr(ta, "plan_night_out", fake_plan)
+
+    out = _run(ta.run_telegram_agent(99, ta.DEMO_NIGHT_OUT_SENTENCE, source="voice"))
+    assert out["ok"] is True
+    assert out["short_circuit"] == "night_out"
+    assert out["provider"] == "deterministic"
+    assert called_llm["n"] == 0
+
+    edits = [m for m in _quiet_telegram if m.get("method") == "editMessageText"]
+    assert edits, "Thinking bubble must be edited away"
+    assert not any("Thinking" in str(m.get("text") or "") for m in edits[-1:])
+    assert any(m.get("reply_markup") for m in _quiet_telegram)
+
+
+def test_thinking_cleared_on_crash_before_llm(monkeypatch: pytest.MonkeyPatch, _quiet_telegram):
+    """Any crash after Thinking is sent must edit the status bubble."""
+
+    def boom_history(*_a, **_k):
+        raise RuntimeError("simulated history failure")
+
+    monkeypatch.setattr(ta, "get_conversation_history", boom_history)
+    monkeypatch.setattr(ta, "looks_like_night_out_intent", lambda _t: False)
+
+    out = _run(ta.run_telegram_agent(55, "order paneer biryani"))
+    assert out["ok"] is False
+    edits = [m for m in _quiet_telegram if m.get("method") == "editMessageText"]
+    assert edits
+    last = edits[-1].get("text") or ""
+    assert "Thinking" not in last
+    assert "⚠️" in last or "broke" in last.lower() or "Interrupted" in last

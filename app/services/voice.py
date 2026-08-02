@@ -19,6 +19,22 @@ log = logging.getLogger(__name__)
 WHISPER_MODEL = os.environ.get("GROQ_WHISPER_MODEL", "whisper-large-v3-turbo")
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
 
+# Groq Whisper accepts these extensions; Telegram often ships Opus as .oga.
+_GROQ_SAFE_EXTS = {".flac", ".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".ogg", ".wav", ".webm"}
+
+
+def groq_safe_filename(filename: str) -> str:
+    """Map Telegram / odd extensions onto a Groq-supported name (keep audio bytes)."""
+    base = os.path.basename(filename or "") or "voice-note.ogg"
+    root, ext = os.path.splitext(base)
+    lower = ext.lower()
+    if lower in _GROQ_SAFE_EXTS:
+        return base if root else f"voice-note{lower}"
+    # Telegram voice notes: Opus in an OGG container, frequently named .oga / .opus
+    if lower in {".oga", ".opus", ".ogg"} or not lower:
+        return "voice-note.ogg"
+    return "voice-note.ogg"
+
 
 async def transcribe_audio(data: bytes, filename: str = "voice-note.ogg") -> str:
     """Return a transcript for raw audio bytes, or an empty string on failure."""
@@ -28,13 +44,15 @@ async def transcribe_audio(data: bytes, filename: str = "voice-note.ogg") -> str
         log.warning("Audio too large: %s bytes", len(data))
         return ""
 
+    safe_name = groq_safe_filename(filename)
+
     if settings.GROQ_API_KEY.strip():
-        text = await _transcribe_groq(data, filename)
+        text = await _transcribe_groq(data, safe_name)
         if text:
             return text
 
     if settings.GEMINI_API_KEY.strip():
-        return await _transcribe_gemini(data, filename)
+        return await _transcribe_gemini(data, safe_name)
 
     log.warning("No GROQ_API_KEY or GEMINI_API_KEY — cannot transcribe")
     return ""
@@ -45,8 +63,9 @@ async def _transcribe_groq(data: bytes, filename: str) -> str:
         from groq import AsyncGroq
 
         client = AsyncGroq(api_key=settings.GROQ_API_KEY)
+        # Explicit MIME helps when Telegram labels Opus as application/octet-stream.
         result = await client.audio.transcriptions.create(
-            file=(filename, data),
+            file=(filename, data, _mime_for(filename)),
             model=WHISPER_MODEL,
             response_format="json",
         )
@@ -59,13 +78,16 @@ async def _transcribe_groq(data: bytes, filename: str) -> str:
 def _mime_for(filename: str) -> str:
     lower = filename.lower()
     if lower.endswith(".mp3"):
-        return "audio/mp3"
+        return "audio/mpeg"
     if lower.endswith(".wav"):
         return "audio/wav"
-    if lower.endswith(".m4a"):
+    if lower.endswith(".m4a") or lower.endswith(".mp4"):
         return "audio/mp4"
     if lower.endswith(".webm"):
         return "audio/webm"
+    if lower.endswith(".flac"):
+        return "audio/flac"
+    # .ogg / .oga / Telegram voice
     return "audio/ogg"
 
 
@@ -126,5 +148,5 @@ async def transcribe_telegram_voice(file_id: str) -> str:
         log.warning("Telegram voice download failed: %s", e)
         return ""
 
-    filename = os.path.basename(file_path) or "voice-note.ogg"
+    filename = groq_safe_filename(os.path.basename(file_path) or "voice-note.ogg")
     return await transcribe_audio(data, filename)

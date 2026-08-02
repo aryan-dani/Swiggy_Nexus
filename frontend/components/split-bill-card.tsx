@@ -24,12 +24,15 @@ export function SplitBillButton({
   title = "Bill split",
   orderId,
   attendees = DEMO_ATTENDEES,
+  /** false = Chrono-Host / WOW (Beat 1) — keep Telegram silent */
+  notifyTelegram = true,
   className,
 }: {
   totalInr: number;
   title?: string;
   orderId?: string;
   attendees?: string[];
+  notifyTelegram?: boolean;
   className?: string;
 }) {
   const [busy, setBusy] = useState(false);
@@ -47,18 +50,23 @@ export function SplitBillButton({
           attendees,
           order_id: orderId,
           title,
+          notify: notifyTelegram,
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.detail || res.statusText);
       setShares(json.shares || []);
-      nexusToast(`Split ₹${json.total_inr} across ${json.attendee_count} — sent to Telegram`);
+      nexusToast(
+        notifyTelegram
+          ? `Split ₹${json.total_inr} across ${json.attendee_count} — sent to Telegram`
+          : `Split ₹${json.total_inr} across ${json.attendee_count} — UI only (no Telegram)`
+      );
     } catch (e) {
       nexusToast(e instanceof Error ? e.message : "Split failed — is the API on :8000?");
     } finally {
       setBusy(false);
     }
-  }, [attendees, busy, orderId, title, totalInr]);
+  }, [attendees, busy, notifyTelegram, orderId, title, totalInr]);
 
   return (
     <div className={className}>
@@ -86,7 +94,9 @@ export function SplitBillButton({
           >
             <p className="mb-1 flex items-center gap-1 font-display text-[9px] font-black uppercase tracking-widest text-emerald-800">
               <IndianRupee className="h-3 w-3" aria-hidden />
-              Equal split · sent to Telegram · demo UPI
+              {notifyTelegram
+                ? "Equal split · sent to Telegram · demo UPI"
+                : "Equal split · UI only · demo UPI"}
             </p>
             <ul className="space-y-1">
               {shares.map((s) => (

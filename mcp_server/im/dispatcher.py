@@ -124,6 +124,7 @@ def handle_get_cart(params: dict[str, Any]) -> tuple[bool, dict | None, dict | N
     if subtotal > 0 and subtotal < 99:
         return _error("MIN_ORDER_NOT_MET", "Minimum order is ₹99 for Instamart")
     data = {
+        "cart_id": f"cart_im_{sid}",
         "items": session.im.lines,
         "selectedAddressId": session.im.selected_address_id,
         "subtotal_inr": subtotal,

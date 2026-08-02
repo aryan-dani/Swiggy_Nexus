@@ -48,7 +48,7 @@ export const WOW_VARIANTS: WowVariant[] = [
   },
   {
     id: "festival-10-north",
-    prompt: "Plan a festive dinner for 10 — North Indian thali energy",
+    prompt: "Plan my evening — festive dinner for 10, North Indian thali energy",
     title: "Festival feast",
     guests: 10,
     cuisineHint: "north indian",
@@ -244,7 +244,47 @@ export const ALT_LISTINGS: Record<
   ],
 };
 
-export function demoImageUrl(seed: string, w = 480, h = 320): string {
-  const safe = encodeURIComponent(seed.replace(/\s+/g, "-").toLowerCase());
-  return `https://picsum.photos/seed/nexus-${safe}/${w}/${h}`;
+export function demoImageUrl(
+  seed: string,
+  w = 480,
+  h = 320,
+  kind: "food" | "grocery" | "dine" = "food"
+): string {
+  const lower = seed.toLowerCase();
+  const lock = [...lower].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % 2400;
+
+  // Keyword → food/grocery/dining Flickr tags (loremflickr, not random landscapes).
+  const hit = (
+    [
+      ["gelato", "gelato,icecream,dessert"],
+      ["pistachio", "pistachio,dessert,icecream"],
+      ["domino", "pizza,italian,food"],
+      ["pizza", "pizza,food,italian"],
+      ["malaka", "asian,restaurant,noodles"],
+      ["spice", "indian,curry,food"],
+      ["lantern", "party,celebration,decor"],
+      ["biryani", "biryani,indian,food"],
+      ["waffle", "waffle,dessert,breakfast"],
+      ["kulfi", "kulfi,icecream,dessert"],
+      ["chips", "chips,snacks,potato"],
+      ["cola", "soda,drink,beverage"],
+      ["paneer", "paneer,indian,food"],
+      ["burger", "burger,fastfood,food"],
+      ["sushi", "sushi,japanese,food"],
+      ["coffee", "coffee,cafe,drink"],
+      ["cake", "cake,dessert,bakery"],
+      ["thali", "indian,thali,food"],
+      ["noodles", "noodles,asian,food"],
+      ["salad", "salad,healthy,food"],
+    ] as const
+  ).find(([k]) => lower.includes(k));
+
+  const fallback =
+    kind === "grocery"
+      ? "grocery,snacks,supermarket"
+      : kind === "dine"
+        ? "restaurant,dining,plate"
+        : "food,restaurant,cuisine";
+  const tags = hit?.[1] ?? fallback;
+  return `https://loremflickr.com/${w}/${h}/${tags}?lock=${lock}`;
 }

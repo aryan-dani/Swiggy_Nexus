@@ -66,6 +66,7 @@ function imCartView(sid: string) {
   const delivery = subtotal > 0 ? 25 : 0;
   const grand = subtotal + delivery;
   return {
+    cart_id: `cart_im_${sid}`,
     items: s.im.lines,
     selectedAddressId: s.im.address_id || undefined,
     subtotal_inr: subtotal,

@@ -212,6 +212,7 @@ def handle_get_food_cart(params: dict[str, Any]) -> tuple[bool, dict | None, dic
     discount = fc.coupon_discount_inr
     total = max(0, subtotal + delivery - discount)
     data = {
+        "cart_id": f"cart_fd_{sid}",
         "restaurantId": fc.restaurant_id,
         "restaurantName": fc.restaurant_name,
         "addressId": fc.address_id,

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, MapPin, ShoppingBag, ShoppingCart, Sparkles, UtensilsCrossed } from "lucide-react";
+import { ChevronDown, MapPin, ShoppingBag, ShoppingCart, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 
@@ -96,20 +96,22 @@ export function NexusCommandCenter({
       <button
         type="button"
         onClick={onOpenFoodCart}
-        className="flex items-center gap-1.5 rounded border border-black/20 bg-orange-50 px-2.5 py-1 font-mono text-[10px] font-bold text-orange-900 hover:bg-orange-100"
+        className="flex items-center gap-1.5 rounded border-2 border-black bg-orange-50 px-2.5 py-1 font-mono text-[10px] font-bold text-orange-900 shadow-[2px_2px_0_0_#000] hover:translate-x-px hover:translate-y-px hover:shadow-none"
       >
-        <UtensilsCrossed className="h-3 w-3" aria-hidden />
-        Food ₹{carts.foodTotal || 0}
+        <ShoppingCart className="h-3 w-3" aria-hidden />
+        Food cart
         {carts.foodItems > 0 ? ` · ${carts.foodItems}` : ""}
+        {carts.foodTotal > 0 ? ` · ₹${carts.foodTotal}` : ""}
       </button>
       <button
         type="button"
         onClick={onOpenImCart}
-        className="flex items-center gap-1.5 rounded border border-black/20 bg-emerald-50 px-2.5 py-1 font-mono text-[10px] font-bold text-emerald-900 hover:bg-emerald-100"
+        className="flex items-center gap-1.5 rounded border-2 border-black bg-emerald-50 px-2.5 py-1 font-mono text-[10px] font-bold text-emerald-900 shadow-[2px_2px_0_0_#000] hover:translate-x-px hover:translate-y-px hover:shadow-none"
       >
         <ShoppingBag className="h-3 w-3" aria-hidden />
-        IM ₹{carts.imTotal || 0}
+        IM cart
         {carts.imItems > 0 ? ` · ${carts.imItems}` : ""}
+        {carts.imTotal > 0 ? ` · ₹${carts.imTotal}` : ""}
       </button>
       {bookingsCount > 0 && (
         <span className="flex items-center gap-1.5 rounded border border-black/20 bg-indigo-50 px-2.5 py-1 font-mono text-[10px] font-bold text-indigo-900">
