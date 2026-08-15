@@ -11,7 +11,7 @@ import logging
 import os
 from typing import Any, Generator
 
-from backend.mcp_client import call_tool, LocalMCPError
+from backend.mcp_client import call_tool, LocalMCPError, use_mock_mcp
 from backend.memory import get_user_preferences
 
 # Tool schemas live in backend/tool_schemas.py — one source of truth shared by
@@ -37,7 +37,7 @@ def _sse_tool(
         "method": method,
         "params": params,
         "result": {"success": True, "data": data},
-        "demo_note": "local_mock_mcp",
+        "demo_note": "local_mock_mcp" if use_mock_mcp() else "live_mcp",
     }
 
 
@@ -616,36 +616,16 @@ def _run_llm_agent_inner(
     # Free-form LLM tool loops burn rounds on search_restaurants/search_menu and
     # end with "ran out of tool steps" — which breaks the Demo Director recording.
     # Confirm legs also stay here: web Beat 1 must never stage Telegram HITL.
-    msg_low = (user_message or "").lower()
-    is_chrono_confirm = any(
-        k in msg_low
-        for k in (
-            "confirm table",
-            "confirm groceries",
-            "confirm grocery",
-            "confirm dessert",
-        )
-    )
-    force_chrono = (
-        ctx.get("scenario") == "chrono_host"
-        or is_chrono_confirm
-        or any(
-            k in msg_low
-            for k in (
-                "plan my evening",
-                "plan my housewarming",
-                "plan a festive",
-                "plan a team dinner",
-                "plan a date-night",
-                "plan a date night",
-                "chrono host",
-                "dinner out and dessert",
-                "thali energy",
-                "for 12 guests",
-                "housewarming evening",
-            )
-        )
-    )
+    from backend.agent import is_chrono_confirm_message, is_chrono_plan_message
+
+    is_chrono_confirm = is_chrono_confirm_message(user_message)
+    # Leftover Settings scenario=chrono_host must not swallow unrelated prompts
+    # (e.g. "show me my saved addresses"). WOW launcher still matches plan keywords.
+    force_chrono = is_chrono_confirm or is_chrono_plan_message(user_message)
+    if ctx.get("scenario") == "chrono_host" and not force_chrono:
+        ctx = dict(ctx)
+        ctx.pop("scenario", None)
+        ctx.pop("event", None)
     if force_chrono:
         from backend.agent import run_agent_stream as deterministic
 
@@ -662,6 +642,16 @@ def _run_llm_agent_inner(
             },
         }
         yield from deterministic(user_message, ctx)
+        return
+
+    from backend.agent import is_saved_address_query, run_saved_addresses
+
+    if is_saved_address_query(user_message):
+        yield {
+            "type": "thinking",
+            "payload": {"text": "Address lookup · skipping Chrono-Host leftover scenario"},
+        }
+        yield from run_saved_addresses(ctx)
         return
 
     # Local rehearsal: never touch Gemini/Groq when LLM_PROVIDER=ollama.

@@ -76,8 +76,40 @@ function inferInstamartCategory(message: string, ctx: NormalizedCtx): string {
   return "groceries";
 }
 
+function isChronoPlanMessage(message: string): boolean {
+  const m = (message || "").toLowerCase();
+  return [
+    "plan my evening",
+    "plan my housewarming",
+    "plan a festive",
+    "plan a team dinner",
+    "plan a date-night",
+    "plan a date night",
+    "chrono host",
+    "dinner out and dessert",
+    "thali energy",
+    "for 12 guests",
+    "housewarming evening",
+    "evening plan",
+    "festive dinner",
+  ].some((k) => m.includes(k));
+}
+
+function isSavedAddressQuery(message: string): boolean {
+  const m = (message || "").toLowerCase();
+  return [
+    "saved address",
+    "saved addresses",
+    "saved addreses",
+    "my address",
+    "my addresses",
+    "saved location",
+    "saved locations",
+  ].some((k) => m.includes(k));
+}
+
 function inferVertical(message: string, ctx: NormalizedCtx): Vertical {
-  if (ctx.scenario === "chrono_host") return "chrono";
+  if (isChronoPlanMessage(message)) return "chrono";
   if (ctx.scenario === "sentiment") return "instamart";
   if (ctx.scenario === "dialectic") return "food";
   if (ctx.scenario === "deadlock") return "dineout";
@@ -85,13 +117,6 @@ function inferVertical(message: string, ctx: NormalizedCtx): Vertical {
   if (ctx.scenario === "zerowaste") return "instamart";
 
   const m = message.toLowerCase();
-  if (
-    ["plan my evening", "housewarming", "chrono host", "evening plan"].some((k) =>
-      m.includes(k)
-    )
-  ) {
-    return "chrono";
-  }
   if (
     [
       "dineout",
@@ -354,6 +379,32 @@ export function buildDemoChatEvents(
 ): StreamEvent[] {
   const ctx = normalizeContext(rawContext);
   const mlow = userMessage.toLowerCase();
+
+  if (isSavedAddressQuery(userMessage) && !isChronoPlanMessage(userMessage)) {
+    const feed: FeedItem[] = [
+      {
+        type: "address",
+        title: "Home",
+        subtitle: "Koregaon Park, Pune (demo)",
+        meta: { addressId: "addr_kp_001" },
+      },
+      {
+        type: "address",
+        title: "Work",
+        subtitle: "Baner, Pune (demo)",
+        meta: { addressId: "addr_baner_002" },
+      },
+    ];
+    const reply =
+      "Here are your **2** saved address(es) (demo mock). Connect FastAPI for live MCP.";
+    return [
+      { type: "thinking", payload: { text: "Address lookup · leftover Chrono-Host ignored" } },
+      { type: "tool", payload: { method: "get_addresses", vertical: "food" } },
+      { type: "feed", payload: { items: feed } },
+      { type: "assistant", payload: { text: reply } },
+      { type: "done", payload: { assistant_reply: reply, feed_items: feed } },
+    ];
+  }
 
   if (mlow.includes("confirm table")) {
     const reply = "**Table confirmed** via `book_table` (mock). Check booking ticket in feed.";

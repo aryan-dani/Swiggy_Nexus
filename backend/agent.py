@@ -9,16 +9,65 @@ from __future__ import annotations
 import logging
 from typing import Any, Generator, Literal
 
-from backend.mcp_client import LocalMCPError, call_tool
+from backend.mcp_client import LocalMCPError, call_tool, use_mock_mcp
 
 log = logging.getLogger(__name__)
 
 Vertical = Literal["food", "im", "dineout", "chrono"]
 
+_CHRONO_CONFIRM_KEYS = (
+    "confirm table",
+    "confirm groceries",
+    "confirm grocery",
+    "confirm dessert",
+)
+_CHRONO_PLAN_KEYS = (
+    "plan my evening",
+    "plan my housewarming",
+    "plan a festive",
+    "plan a team dinner",
+    "plan a date-night",
+    "plan a date night",
+    "chrono host",
+    "dinner out and dessert",
+    "thali energy",
+    "for 12 guests",
+    "housewarming evening",
+    "evening plan",
+    "festive dinner",
+)
+
+
+def is_chrono_confirm_message(message: str) -> bool:
+    mlow = (message or "").lower()
+    return any(k in mlow for k in _CHRONO_CONFIRM_KEYS)
+
+
+def is_chrono_plan_message(message: str) -> bool:
+    """True only for WOW / evening-plan prompts — leftover scenario must not hijack chat."""
+    mlow = (message or "").lower()
+    return any(k in mlow for k in _CHRONO_PLAN_KEYS)
+
+
+_ADDRESS_QUERY_KEYS = (
+    "saved address",
+    "saved addresses",
+    "saved addreses",
+    "my address",
+    "my addresses",
+    "saved location",
+    "saved locations",
+)
+
+
+def is_saved_address_query(message: str) -> bool:
+    mlow = (message or "").lower()
+    return any(k in mlow for k in _ADDRESS_QUERY_KEYS)
+
 
 def _detect_vertical(message: str, ctx: dict[str, Any]) -> Vertical:
     mlow = message.lower()
-    if ctx.get("scenario") == "chrono_host":
+    if is_chrono_plan_message(message):
         return "chrono"
     if ctx.get("scenario") in ("sentiment",):
         return "im"
@@ -29,25 +78,6 @@ def _detect_vertical(message: str, ctx: dict[str, Any]) -> Vertical:
         return "dineout"
     if ctx_v == "instamart":
         return "im"
-
-    if any(
-        k in mlow
-        for k in (
-            "plan my evening",
-            "plan my housewarming",
-            "plan a festive",
-            "plan a team dinner",
-            "plan a date-night",
-            "plan a date night",
-            "housewarming",
-            "chrono host",
-            "evening plan",
-            "dinner out and dessert",
-            "thali energy",
-            "festive dinner",
-        )
-    ):
-        return "chrono"
     if any(
         k in mlow
         for k in (
@@ -144,16 +174,114 @@ def _sse_tool(server_key: str, http_path: str, method: str, params: dict[str, An
         "method": method,
         "params": params,
         "result": {"success": True, "data": data},
-        "demo_note": "local_mock_mcp",
+        "demo_note": "local_mock_mcp" if use_mock_mcp() else "live_mcp",
     }
 
 
 def _pick_address_id(ctx: dict[str, Any], addrs: dict[str, Any]) -> str:
     aid = str(ctx.get("addressId") or ctx.get("address_id") or "")
-    plist = addrs.get("addresses") or []
-    if not aid and plist:
-        aid = str(plist[0].get("addressId", ""))
+    blob = addrs if isinstance(addrs, dict) else {}
+    plist = blob.get("addresses") or []
+    if not plist and isinstance(blob.get("data"), dict):
+        plist = blob["data"].get("addresses") or []
+    if not aid and plist and isinstance(plist[0], dict):
+        aid = str(plist[0].get("addressId") or plist[0].get("id") or "")
     return aid
+
+
+def _dineout_locations(blob: Any) -> list[dict[str, Any]]:
+    """Live MCP nests locations under data.locations; mock returns locations at top level."""
+    cur: Any = blob
+    for _ in range(3):
+        if not isinstance(cur, dict):
+            return []
+        locs = cur.get("locations")
+        if isinstance(locs, list) and locs:
+            return [x for x in locs if isinstance(x, dict)]
+        nested = cur.get("data")
+        if isinstance(nested, dict):
+            cur = nested
+            continue
+        break
+    return []
+
+
+def _loc_coords(loc: dict[str, Any]) -> tuple[Any, Any]:
+    lat = loc.get("lat") if loc.get("lat") is not None else loc.get("latitude")
+    lng = loc.get("lng") if loc.get("lng") is not None else loc.get("longitude")
+    return lat, lng
+
+
+def _restaurant_rows(blob: Any) -> list[dict[str, Any]]:
+    cur: Any = blob
+    for _ in range(3):
+        if not isinstance(cur, dict):
+            return []
+        for key in ("restaurants", "venues", "results"):
+            rows = cur.get(key)
+            if isinstance(rows, list) and rows:
+                return [x for x in rows if isinstance(x, dict)]
+        nested = cur.get("data")
+        if isinstance(nested, dict):
+            cur = nested
+            continue
+        break
+    return []
+
+
+def _restaurant_id(row: dict[str, Any]) -> str:
+    return str(
+        row.get("restaurant_id")
+        or row.get("restaurantId")
+        or row.get("id")
+        or ""
+    ).strip()
+
+
+def _im_products(blob: Any) -> list[dict[str, Any]]:
+    cur: Any = blob
+    for _ in range(3):
+        if not isinstance(cur, dict):
+            return []
+        rows = cur.get("products")
+        if isinstance(rows, list):
+            return [x for x in rows if isinstance(x, dict)]
+        nested = cur.get("data")
+        if isinstance(nested, dict):
+            cur = nested
+            continue
+        break
+    return []
+
+
+def _im_variant_rows(product: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = product.get("variations") or product.get("variants") or []
+    return [x for x in rows if isinstance(x, dict)]
+
+
+def _im_product_name(product: dict[str, Any]) -> str:
+    return str(product.get("displayName") or product.get("name") or "")
+
+
+def _im_cart_lines(products: list[dict[str, Any]], limit: int = 4) -> list[dict[str, Any]]:
+    """Build update_cart items from live `variations` or mock `variants`."""
+    lines: list[dict[str, Any]] = []
+    for p in products[:limit]:
+        variants = _im_variant_rows(p)
+        v = variants[0] if variants else {}
+        spin = str(v.get("spinId") or "").strip()
+        if not spin:
+            continue
+        name = _im_product_name(p)
+        line: dict[str, Any] = {
+            "spinId": spin,
+            "quantity": 2 if "plate" in name.lower() else 1,
+        }
+        sku = str(v.get("skuId") or "").strip()
+        if sku:
+            line["skuId"] = sku
+        lines.append(line)
+    return lines
 
 
 def _pick_pizza_restaurant(sr: dict[str, Any]) -> str | None:
@@ -477,24 +605,34 @@ def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[st
     locs_any = call_tool("dineout", "get_saved_locations", {})
     yield {"type": "tool", "payload": _sse_tool("dineout", "/dineout", "get_saved_locations", {}, locs_any)}
     locs = locs_any if isinstance(locs_any, dict) else {}
-    loc0 = (locs.get("locations") or [{}])[0]
-    lat, lng = loc0.get("lat"), loc0.get("lng")
+    loc_rows = _dineout_locations(locs)
+    loc0 = loc_rows[0] if loc_rows else {}
+    lat, lng = _loc_coords(loc0)
 
     yield _thinking(f"Dineout: searching {cuisine} restaurants for {guests} guests.")
-    dine_params = {"query": cuisine, "latitude": lat, "longitude": lng}
+    dine_params: dict[str, Any] = {"query": cuisine}
+    if lat is not None and lng is not None:
+        dine_params["latitude"] = lat
+        dine_params["longitude"] = lng
     dine_search = call_tool("dineout", "search_restaurants_dineout", dine_params)
     yield {"type": "tool", "payload": _sse_tool("dineout", "/dineout", "search_restaurants_dineout", dine_params, dine_search)}
     ds = dine_search if isinstance(dine_search, dict) else {}
-    dine_list = [r for r in (ds.get("restaurants") or []) if isinstance(r, dict)] or [{}]
-    rest_pick = dine_list[pick_seed % len(dine_list)]
-    rest_id = str(rest_pick.get("restaurant_id", "do_italian_804"))
+    dine_list = _restaurant_rows(ds)
+    rest_pick = dine_list[pick_seed % len(dine_list)] if dine_list else {}
+    rest_id = _restaurant_id(rest_pick)
+    if not rest_id and use_mock_mcp():
+        rest_id = "do_italian_804"
 
-    slot_params = {"restaurantId": rest_id, "guestCount": guests, "date": "2026-07-12", "partySize": guests}
-    slots_any = call_tool("dineout", "get_available_slots", slot_params)
-    yield {"type": "tool", "payload": _sse_tool("dineout", "/dineout", "get_available_slots", slot_params, slots_any)}
-    slots_blob = slots_any if isinstance(slots_any, dict) else {}
-    slot0 = (slots_blob.get("slots") or [{}])[0]
-    slot_label = slot0.get("label", "20:00")
+    slot_label = "TBD"
+    slots_any: Any = {"slots": []}
+    if rest_id:
+        slot_params = {"restaurantId": rest_id, "guestCount": guests, "date": "2026-07-12", "partySize": guests}
+        slots_any = call_tool("dineout", "get_available_slots", slot_params)
+        yield {"type": "tool", "payload": _sse_tool("dineout", "/dineout", "get_available_slots", slot_params, slots_any)}
+        slots_blob = slots_any if isinstance(slots_any, dict) else {}
+        slot0 = (slots_blob.get("slots") or [{}])[0] if isinstance(slots_blob, dict) else {}
+        if isinstance(slot0, dict):
+            slot_label = str(slot0.get("label") or slot0.get("time") or "20:00")
 
     # --- Instamart leg ---
     yield _thinking(f"Instamart: staging supplies — “{im_query}”.")
@@ -505,19 +643,17 @@ def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[st
 
     im_search = call_tool("im", "search_products", {"addressId": addr_id, "query": im_query})
     yield {"type": "tool", "payload": _sse_tool("im", "/im", "search_products", {"query": im_query}, im_search)}
-    im_prods = (im_search.get("products") if isinstance(im_search, dict) else []) or []
-    im_lines: list[dict[str, Any]] = []
-    for p in im_prods[:4]:
-        v = (p.get("variants") or [{}])[0]
-        spin = v.get("spinId")
-        if spin:
-            im_lines.append({"spinId": spin, "quantity": 2 if "plate" in p.get("name", "").lower() else 1})
+    im_prods = _im_products(im_search)
+    im_lines = _im_cart_lines(im_prods)
 
-    im_cart_params = {"requestId": uuid_session, "selectedAddressId": addr_id, "items": im_lines}
-    im_cart_any = call_tool("im", "update_cart", im_cart_params)
-    yield {"type": "tool", "payload": _sse_tool("im", "/im", "update_cart", im_cart_params, im_cart_any)}
-    im_cart_view = call_tool("im", "get_cart", {"requestId": uuid_session})
-    yield {"type": "tool", "payload": _sse_tool("im", "/im", "get_cart", {"requestId": uuid_session}, im_cart_view)}
+    im_cart_any: Any = {"items": []}
+    im_cart_view: Any = {"items": []}
+    if im_lines:
+        im_cart_params = {"requestId": uuid_session, "selectedAddressId": addr_id, "items": im_lines}
+        im_cart_any = call_tool("im", "update_cart", im_cart_params)
+        yield {"type": "tool", "payload": _sse_tool("im", "/im", "update_cart", im_cart_params, im_cart_any)}
+        im_cart_view = call_tool("im", "get_cart", {"requestId": uuid_session})
+        yield {"type": "tool", "payload": _sse_tool("im", "/im", "get_cart", {"requestId": uuid_session}, im_cart_view)}
     im_line_summaries = _im_line_summaries(im_cart_view)
     im_cart_id = (
         (im_cart_any or {}).get("cart_id")
@@ -620,13 +756,15 @@ def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[st
         })
     if not im_line_summaries:
         for p in im_prods[:4]:
+            v0 = (_im_variant_rows(p) or [{}])[0]
+            price = p.get("price_inr") or (v0.get("price") or {}).get("offerPrice") or v0.get("price")
             feed.append({
                 "type": "instamart",
-                "title": p.get("name"),
+                "title": _im_product_name(p),
                 "subtitle": f"Staged · {im_query.split()[0] if im_query else 'supplies'}",
                 "meta": {
-                    "product_id": p.get("product_id"),
-                    "price_inr": p.get("price_inr") or (p.get("variants") or [{}])[0].get("price"),
+                    "product_id": p.get("productId") or p.get("product_id"),
+                    "price_inr": price,
                 },
             })
     feed.append({
@@ -650,7 +788,12 @@ def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[st
 
 
 def _error_bundle(message: str) -> Generator[dict[str, Any], None, None]:
-    feed = [{"type": "error", "title": "Local MCP mock", "subtitle": message, "meta": {}}]
+    feed = [{
+        "type": "error",
+        "title": "Local MCP mock" if use_mock_mcp() else "Live MCP",
+        "subtitle": message,
+        "meta": {},
+    }]
     yield {"type": "thinking", "payload": {"text": "Caught a tool error."}}
     yield {"type": "feed", "payload": {"items": feed}}
     yield {"type": "assistant", "payload": {"text": "Something blocked the MCP chain — check Developer Mode traces."}}
@@ -768,6 +911,61 @@ def _confirm_leg(
         yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": []}}
 
 
+def run_saved_addresses(ctx: dict[str, Any]) -> Generator[dict[str, Any], None, None]:
+    """Read-only address lookup — Food get_addresses + Dineout saved locations."""
+    yield _thinking("Looking up saved delivery addresses and Dineout locations.")
+    addrs_any = call_tool("food", "get_addresses", {})
+    yield {"type": "tool", "payload": _sse_tool("food", "/food", "get_addresses", {}, addrs_any)}
+    locs_any: Any = {}
+    try:
+        locs_any = call_tool("dineout", "get_saved_locations", {})
+        yield {"type": "tool", "payload": _sse_tool("dineout", "/dineout", "get_saved_locations", {}, locs_any)}
+    except LocalMCPError:
+        locs_any = {}
+
+    feed: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    addrs = addrs_any if isinstance(addrs_any, dict) else {}
+    for a in addrs.get("addresses") or []:
+        if not isinstance(a, dict):
+            continue
+        aid = str(a.get("addressId") or a.get("id") or "")
+        if aid and aid in seen:
+            continue
+        if aid:
+            seen.add(aid)
+        title = str(a.get("label") or a.get("addressTag") or "Saved address")
+        subtitle = str(a.get("addressLine") or a.get("line1") or a.get("area") or "")
+        feed.append({
+            "type": "address",
+            "title": title,
+            "subtitle": subtitle,
+            "meta": {"addressId": aid or None},
+        })
+    for loc in _dineout_locations(locs_any):
+        lid = str(loc.get("id") or "")
+        if lid and lid in seen:
+            continue
+        if lid:
+            seen.add(lid)
+        feed.append({
+            "type": "address",
+            "title": str(loc.get("addressTag") or loc.get("label") or "Saved location"),
+            "subtitle": str(loc.get("addressLine") or ""),
+            "meta": {"addressId": lid or None, "source": "dineout"},
+        })
+
+    n = len(feed)
+    if n == 0:
+        reply = "I couldn't find saved addresses on this account yet."
+    else:
+        lines = [f"- **{item['title']}** — {item.get('subtitle') or 'saved'}" for item in feed]
+        reply = f"Here are your **{n}** saved address(es):\n\n" + "\n".join(lines)
+    yield {"type": "feed", "payload": {"items": feed}}
+    yield {"type": "assistant", "payload": {"text": reply}}
+    yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": feed}}
+
+
 def run_agent_stream(user_message: str, context: dict[str, Any] | None):
     """Yield SSE events: thinking | tool | feed | assistant | done."""
     ctx = context or {}
@@ -775,6 +973,9 @@ def run_agent_stream(user_message: str, context: dict[str, Any] | None):
 
     mlow = user_message.lower()
     try:
+        if is_saved_address_query(user_message) and not is_chrono_plan_message(user_message):
+            yield from run_saved_addresses(ctx)
+            return
         if "confirm table" in mlow:
             yield from _confirm_leg("table", sid, ctx)
             return

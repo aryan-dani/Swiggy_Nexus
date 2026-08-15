@@ -209,3 +209,68 @@ def test_web_chrono_confirms_do_not_call_telegram(monkeypatch: pytest.MonkeyPatc
     list(run_llm_agent("confirm groceries", {"scenario": "chrono_host", "requestId": sid}))
 
     assert telegram_posts == [], f"unexpected Telegram HTTP during web Chrono: {telegram_posts}"
+
+
+def test_saved_addresses_does_not_run_chrono_when_scenario_leftover(monkeypatch: pytest.MonkeyPatch):
+    """Leftover Chrono-Host chip must not hijack an address lookup."""
+    from backend.llm_orchestrator import run_llm_agent
+
+    monkeypatch.setattr(
+        "backend.llm_orchestrator._env_keys",
+        lambda: ("", "gemini-3.5-flash-lite", "", "llama-3.3-70b-versatile", "http://127.0.0.1:11434", "qwen2.5:7b-instruct", "auto"),
+    )
+    events = list(
+        run_llm_agent(
+            "show me my saved addresses",
+            {"scenario": "chrono_host", "requestId": "addr_lookup_sess", "use_mock_mcp": True},
+        )
+    )
+    thinking = " ".join(
+        str((e.get("payload") or {}).get("text") or "")
+        for e in events
+        if e.get("type") == "thinking"
+    )
+    assert "Chrono-Host · deterministic" not in thinking
+    methods = [
+        (e.get("payload") or {}).get("method")
+        for e in events
+        if e.get("type") == "tool"
+    ]
+    assert "search_restaurants_dineout" not in methods
+    assert "update_cart" not in methods
+    assert "get_addresses" in methods
+    assert "get_saved_locations" in methods
+    reply = ""
+    for e in events:
+        if e.get("type") == "assistant":
+            reply = str((e.get("payload") or {}).get("text") or "")
+    assert "saved address" in reply.lower()
+    assert "items array is required" not in reply.lower()
+
+
+def test_live_shaped_im_and_locations_parse():
+    from backend.agent import _dineout_locations, _im_cart_lines, _im_products, _loc_coords
+
+    locs = {
+        "data": {
+            "locations": [
+                {"id": "abc", "addressTag": "Home", "addressLine": "Pune"},
+            ]
+        }
+    }
+    rows = _dineout_locations(locs)
+    assert len(rows) == 1
+    lat, lng = _loc_coords(rows[0])
+    assert lat is None and lng is None
+
+    search = {
+        "nextOffset": "1",
+        "products": [
+            {
+                "displayName": "Origami Paper Plates",
+                "variations": [{"spinId": "SPIN1", "skuId": "SKU1"}],
+            }
+        ],
+    }
+    lines = _im_cart_lines(_im_products(search))
+    assert lines == [{"spinId": "SPIN1", "quantity": 2, "skuId": "SKU1"}]
