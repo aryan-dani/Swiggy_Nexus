@@ -77,36 +77,69 @@ def live_token_configured() -> bool:
     return _load_bearer_token() is not None
 
 
-def set_mock_mcp_override(use_mock: bool | None) -> Any:
-    """Set per-request mock/live. Pass None to clear and fall back to env."""
-    return _mock_override.set(use_mock)
+def parse_use_mock_from_context(context: dict[str, Any] | None) -> bool | None:
+    """Return True/False if chat context sets use_mock_mcp, else None (use env heuristic)."""
+    ctx = context or {}
+    if "use_mock_mcp" not in ctx:
+        return None
+    raw = ctx.get("use_mock_mcp")
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        return raw.strip().lower() in ("1", "true", "yes")
+    return bool(raw)
 
 
-def reset_mock_mcp_override(token: Any) -> None:
-    _mock_override.reset(token)
+def set_mock_mcp_override(use_mock: bool | None) -> None:
+    """Set per-request mock/live on the *current* thread/context.
+
+    Important: Starlette streams sync generators via a threadpool (one ``next()``
+    per thread). Never use ContextVar Token.reset() across yields — re-``set``
+    before each resume instead, and clear with ``set(None)``.
+    """
+    _mock_override.set(use_mock)
+
+
+def reset_mock_mcp_override(_token: Any = None) -> None:
+    """Clear override. ``_token`` ignored (kept for call-site compatibility)."""
+    _mock_override.set(None)
 
 
 @contextmanager
 def mock_mcp_override(use_mock: bool | None) -> Iterator[None]:
-    """Context manager for chat/Telegram request scopes."""
-    tok = set_mock_mcp_override(use_mock)
+    """Context manager for request scopes that stay on one thread."""
+    set_mock_mcp_override(use_mock)
     try:
         yield
     finally:
-        reset_mock_mcp_override(tok)
+        reset_mock_mcp_override()
 
 
-def apply_mock_override_from_context(context: dict[str, Any] | None) -> Any:
-    """Read ``use_mock_mcp`` from chat context; return token for reset_mock_mcp_override."""
-    ctx = context or {}
-    if "use_mock_mcp" not in ctx:
-        return set_mock_mcp_override(None)
-    raw = ctx.get("use_mock_mcp")
-    if isinstance(raw, bool):
-        return set_mock_mcp_override(raw)
-    if isinstance(raw, str):
-        return set_mock_mcp_override(raw.strip().lower() in ("1", "true", "yes"))
-    return set_mock_mcp_override(bool(raw))
+def apply_mock_override_from_context(context: dict[str, Any] | None) -> None:
+    """Apply ``use_mock_mcp`` from chat context onto the current thread."""
+    set_mock_mcp_override(parse_use_mock_from_context(context))
+
+
+def iter_with_mock_override(
+    gen: Any,
+    use_mock: bool | None,
+) -> Iterator[Any]:
+    """Drive a sync generator while re-applying MCP mock override each resume.
+
+    Fixes: ``Token was created in a different Context`` when SSE streaming
+    hops threads between yields.
+    """
+    set_mock_mcp_override(use_mock)
+    try:
+        while True:
+            set_mock_mcp_override(use_mock)
+            try:
+                item = next(gen)
+            except StopIteration:
+                break
+            yield item
+    finally:
+        reset_mock_mcp_override()
 
 
 def use_mock_mcp() -> bool:

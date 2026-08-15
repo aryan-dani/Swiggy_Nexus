@@ -565,16 +565,19 @@ def _run_gemini_loop(
 
 def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generator[dict[str, Any], None, None]:
     from backend.mcp_client import (
-        apply_mock_override_from_context,
-        reset_mock_mcp_override,
+        iter_with_mock_override,
+        live_token_configured,
+        parse_use_mock_from_context,
     )
 
     ctx = dict(context or {})
-    override_tok = apply_mock_override_from_context(ctx)
-    try:
-        yield from _run_llm_agent_inner(user_message, ctx)
-    finally:
-        reset_mock_mcp_override(override_tok)
+    desired = parse_use_mock_from_context(ctx)
+    # Live requested but no token on this host → force mock for the whole stream.
+    if desired is False and not live_token_configured():
+        desired = True
+        ctx["_mcp_live_fallback"] = True
+
+    yield from iter_with_mock_override(_run_llm_agent_inner(user_message, ctx), desired)
 
 
 def _run_llm_agent_inner(
@@ -589,7 +592,7 @@ def _run_llm_agent_inner(
 
     mode = "MOCK" if use_mock_mcp() else "LIVE"
     live_ok = live_token_configured()
-    if not use_mock_mcp() and not live_ok:
+    if ctx.pop("_mcp_live_fallback", None):
         yield {
             "type": "thinking",
             "payload": {
@@ -599,14 +602,14 @@ def _run_llm_agent_inner(
                 ),
             },
         }
-        from backend.mcp_client import set_mock_mcp_override
-
-        set_mock_mcp_override(True)
         mode = "MOCK"
     else:
         yield {
             "type": "thinking",
-            "payload": {"text": f"MCP mode · {mode}" + (" · token ok" if live_ok and mode == "LIVE" else "")},
+            "payload": {
+                "text": f"MCP mode · {mode}"
+                + (" · token ok" if live_ok and mode == "LIVE" else "")
+            },
         }
 
     # 60s WOW / Chrono-Host must stay on the deterministic multi-vertical script.
