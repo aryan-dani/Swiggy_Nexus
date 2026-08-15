@@ -1,0 +1,32 @@
+{
+  "tool": "get_cart",
+  "server": "im",
+  "captured_at": "2026-08-15T05:04:44.761454+00:00",
+  "meta": {},
+  "data": {
+    "cartTotalAmount": "0",
+    "items": [],
+    "billBreakdown": {
+      "lineItems": [],
+      "toPay": {
+        "label": "To Pay",
+        "value": "0",
+        "_keys": [
+          "label",
+          "value"
+        ]
+      },
+      "_keys": [
+        "lineItems",
+        "toPay"
+      ]
+    },
+    "cartAbsent": true,
+    "_keys": [
+      "billBreakdown",
+      "cartAbsent",
+      "cartTotalAmount",
+      "items"
+    ]
+  }
+}

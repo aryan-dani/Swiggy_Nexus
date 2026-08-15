@@ -208,6 +208,23 @@ def handle_report_error(params: dict[str, Any]) -> tuple[bool, dict | None, dict
     return True, {"reportLink": "mailto:builders@swiggy.in"}, None
 
 
+def handle_render_restaurants_dineout(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    """Widget helper — return same search payload for mock."""
+    return handle_search_restaurants(params)
+
+
+def handle_get_payment_options(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    return True, {"paymentOptions": [{"id": "FREE", "label": "Free reservation", "available": True}]}, None
+
+
+def handle_check_payment_status(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    return True, {"status": "NOT_STARTED"}, None
+
+
+def handle_confirm_order(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    return False, None, {"code": "VALIDATION", "message": "confirm_order is HITL-only; mock refuses"}
+
+
 _TOOLS = {
     "get_saved_locations": handle_get_saved_locations,
     "search_restaurants": handle_search_restaurants,
@@ -217,6 +234,10 @@ _TOOLS = {
     "get_booking_status": handle_get_booking_status,
     "create_cart": handle_create_cart,
     "report_error": handle_report_error,
+    "render_restaurants_dineout": handle_render_restaurants_dineout,
+    "get_payment_options": handle_get_payment_options,
+    "check_payment_status": handle_check_payment_status,
+    "confirm_order": handle_confirm_order,
 }
 
 

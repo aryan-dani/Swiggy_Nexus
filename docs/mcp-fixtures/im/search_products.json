@@ -1,0 +1,522 @@
+{
+  "tool": "search_products",
+  "server": "im",
+  "captured_at": "2026-08-15T05:04:43.376162+00:00",
+  "meta": {
+    "spinId_present": false
+  },
+  "data": {
+    "nextOffset": "1",
+    "products": [
+      {
+        "displayName": "Amul Gold Pasteurised Full Cream Milk",
+        "brand": "Amul",
+        "inStock": true,
+        "isAvail": true,
+        "variations": [
+          {
+            "spinId": "<id:10>",
+            "_spinId_present": true,
+            "skuId": "B1TSBZADRY",
+            "quantityDescription": "500 ml x 4",
+            "displayName": "Amul Gold Pasteurised Full Cream Milk",
+            "brandName": "Amul",
+            "price": {
+              "mrp": 140,
+              "offerPrice": 140,
+              "unitLevelPrice": "7/100 ml",
+              "_keys": [
+                "mrp",
+                "offerPrice",
+                "unitLevelPrice"
+              ]
+            },
+            "isInStockAndAvailable": true,
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/NI_CATALOG/IMAGES/ciw/2025/12/17/51a2cd89-2a42-4b2b-ac97-95288e02952d_TYF3262KU8_MN_16122025.png",
+            "rating": {
+              "value": "4.5",
+              "count": "392.2k",
+              "_keys": [
+                "count",
+                "value"
+              ]
+            },
+            "vegClassifier": "VEG_CLASSIFIER_VEG",
+            "maxQuantity": 1,
+            "maxQuantityMessage": "Only 1 unit(s) of this item can be added per order.",
+            "_keys": [
+              "brandName",
+              "displayName",
+              "imageUrl",
+              "isInStockAndAvailable",
+              "maxQuantity",
+              "maxQuantityMessage",
+              "price",
+              "quantityDescription",
+              "rating",
+              "skuId",
+              "spinId",
+              "vegClassifier"
+            ]
+          },
+          {
+            "spinId": "<id:10>",
+            "_spinId_present": true,
+            "skuId": "TR26CM5M6C",
+            "quantityDescription": "500 ml",
+            "displayName": "Amul Gold Pasteurised Full Cream Milk",
+            "brandName": "Amul",
+            "price": {
+              "mrp": 35,
+              "offerPrice": 35,
+              "unitLevelPrice": "7/100 ml",
+              "_keys": [
+                "mrp",
+                "offerPrice",
+                "unitLevelPrice"
+              ]
+            },
+            "isInStockAndAvailable": true,
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/NI_CATALOG/IMAGES/ciw/2025/12/17/51a2cd89-2a42-4b2b-ac97-95288e02952d_TYF3262KU8_MN_16122025.png",
+            "rating": {
+              "value": "4.5",
+              "count": "392.2k",
+              "_keys": [
+                "count",
+                "value"
+              ]
+            },
+            "vegClassifier": "VEG_CLASSIFIER_VEG",
+            "maxQuantity": 20,
+            "maxQuantityMessage": "Only 20 unit(s) of this item can be added per order.",
+            "_keys": [
+              "brandName",
+              "displayName",
+              "imageUrl",
+              "isInStockAndAvailable",
+              "maxQuantity",
+              "maxQuantityMessage",
+              "price",
+              "quantityDescription",
+              "rating",
+              "skuId",
+              "spinId",
+              "vegClassifier"
+            ]
+          }
+        ],
+        "productId": "71KUIARPTF",
+        "parentProductId": "H9Z199XB5M",
+        "isPromoted": false,
+        "badges": [
+          {
+            "type": "BADGE_TYPE_BEST_SELLER",
+            "text": "BESTSELLER",
+            "backgroundColor": "#4FA6FE",
+            "_keys": [
+              "backgroundColor",
+              "text",
+              "type"
+            ]
+          }
+        ],
+        "_keys": [
+          "badges",
+          "brand",
+          "displayName",
+          "inStock",
+          "isAvail",
+          "isPromoted",
+          "parentProductId",
+          "productId",
+          "variations"
+        ]
+      },
+      {
+        "displayName": "Amul Slim n Trim UHT Skimmed Milk",
+        "brand": "Amul",
+        "inStock": true,
+        "isAvail": true,
+        "variations": [
+          {
+            "spinId": "<id:10>",
+            "_spinId_present": true,
+            "skuId": "G9D5P2AS0N",
+            "quantityDescription": "1 ltr x 12",
+            "displayName": "Amul Slim n Trim UHT Skimmed Milk",
+            "brandName": "Amul",
+            "price": {
+              "mrp": 1020,
+              "offerPrice": 1020,
+              "unitLevelPrice": "8.5/100 ml",
+              "_keys": [
+                "mrp",
+                "offerPrice",
+                "unitLevelPrice"
+              ]
+            },
+            "isInStockAndAvailable": true,
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/NI_CATALOG/IMAGES/ciw/2025/12/17/91b35837-e653-465b-a118-31c2cd4a9b22_YY4NAGJO4S_MN_17122025.png",
+            "rating": {
+              "value": "4.7",
+              "count": "12.8k",
+              "_keys": [
+                "count",
+                "value"
+              ]
+            },
+            "vegClassifier": "VEG_CLASSIFIER_VEG",
+            "maxQuantity": 1,
+            "maxQuantityMessage": "That’s all we have in stock at the moment!",
+            "_keys": [
+              "brandName",
+              "displayName",
+              "imageUrl",
+              "isInStockAndAvailable",
+              "maxQuantity",
+              "maxQuantityMessage",
+              "price",
+              "quantityDescription",
+              "rating",
+              "skuId",
+              "spinId",
+              "vegClassifier"
+            ]
+          },
+          {
+            "spinId": "<id:10>",
+            "_spinId_present": true,
+            "skuId": "HFDPIJNJUX",
+            "quantityDescription": "1 ltr",
+            "displayName": "Amul Slim n Trim UHT Skimmed Milk",
+            "brandName": "Amul",
+            "price": {
+              "mrp": 85,
+              "offerPrice": 85,
+              "unitLevelPrice": "8.5/100 ml",
+              "_keys": [
+                "mrp",
+                "offerPrice",
+                "unitLevelPrice"
+              ]
+            },
+            "isInStockAndAvailable": true,
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/NI_CATALOG/IMAGES/ciw/2025/12/17/91b35837-e653-465b-a118-31c2cd4a9b22_YY4NAGJO4S_MN_17122025.png",
+            "rating": {
+              "value": "4.7",
+              "count": "12.8k",
+              "_keys": [
+                "count",
+                "value"
+              ]
+            },
+            "vegClassifier": "VEG_CLASSIFIER_VEG",
+            "maxQuantity": 12,
+            "maxQuantityMessage": "That’s all we have in stock at the moment!",
+            "_keys": [
+              "brandName",
+              "displayName",
+              "imageUrl",
+              "isInStockAndAvailable",
+              "maxQuantity",
+              "maxQuantityMessage",
+              "price",
+              "quantityDescription",
+              "rating",
+              "skuId",
+              "spinId",
+              "vegClassifier"
+            ]
+          }
+        ],
+        "productId": "LBOI72WE75",
+        "parentProductId": "AN57LN0CVR",
+        "isPromoted": true,
+        "badges": [
+          {
+            "type": "BADGE_TYPE_AD",
+            "text": "AD",
+            "backgroundColor": "rgba(2,6,12,0.05)",
+            "_keys": [
+              "backgroundColor",
+              "text",
+              "type"
+            ]
+          }
+        ],
+        "_keys": [
+          "badges",
+          "brand",
+          "displayName",
+          "inStock",
+          "isAvail",
+          "isPromoted",
+          "parentProductId",
+          "productId",
+          "variations"
+        ]
+      },
+      {
+        "displayName": "Amul Shakti Milk",
+        "brand": "Amul",
+        "inStock": true,
+        "isAvail": true,
+        "variations": [
+          {
+            "spinId": "<id:10>",
+            "_spinId_present": true,
+            "skuId": "QXZHFKI12B",
+            "quantityDescription": "500 ml",
+            "displayName": "Amul Shakti Milk",
+            "brandName": "Amul",
+            "price": {
+              "mrp": 32,
+              "offerPrice": 32,
+              "unitLevelPrice": "6.4/100 ml",
+              "_keys": [
+                "mrp",
+                "offerPrice",
+                "unitLevelPrice"
+              ]
+            },
+            "isInStockAndAvailable": true,
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/NI_CATALOG/IMAGES/ciw/2025/12/17/751b42be-4291-4e80-9fc9-d1741ac2e344_K3LMXCQ8RL_MN_16122025.png",
+            "rating": {
+              "value": "4.5",
+              "count": "60.4k",
+              "_keys": [
+                "count",
+                "value"
+              ]
+            },
+            "vegClassifier": "VEG_CLASSIFIER_VEG",
+            "maxQuantity": 18,
+            "maxQuantityMessage": "That’s all we have in stock at the moment!",
+            "_keys": [
+              "brandName",
+              "displayName",
+              "imageUrl",
+              "isInStockAndAvailable",
+              "maxQuantity",
+              "maxQuantityMessage",
+              "price",
+              "quantityDescription",
+              "rating",
+              "skuId",
+              "spinId",
+              "vegClassifier"
+            ]
+          }
+        ],
+        "productId": "X9HLW8LZCB",
+        "parentProductId": "ENYC936HPE",
+        "isPromoted": false,
+        "badges": [
+          {
+            "type": "BADGE_TYPE_BEST_SELLER",
+            "text": "BESTSELLER",
+            "backgroundColor": "#4FA6FE",
+            "_keys": [
+              "backgroundColor",
+              "text",
+              "type"
+            ]
+          }
+        ],
+        "_keys": [
+          "badges",
+          "brand",
+          "displayName",
+          "inStock",
+          "isAvail",
+          "isPromoted",
+          "parentProductId",
+          "productId",
+          "variations"
+        ]
+      },
+      {
+        "displayName": "Amul Taaza Milky Milk",
+        "brand": "Amul",
+        "inStock": true,
+        "isAvail": true,
+        "variations": [
+          {
+            "spinId": "<id:10>",
+            "_spinId_present": true,
+            "skuId": "WIAS2LTNSN",
+            "quantityDescription": "500 ml x 4",
+            "displayName": "Amul Taaza Milky Milk",
+            "brandName": "Amul",
+            "price": {
+              "mrp": 116,
+              "offerPrice": 116,
+              "unitLevelPrice": "5.8/100 ml",
+              "_keys": [
+                "mrp",
+                "offerPrice",
+                "unitLevelPrice"
+              ]
+            },
+            "isInStockAndAvailable": true,
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/NI_CATALOG/IMAGES/ciw/2025/12/17/b42b731e-b555-4536-913a-265af70ec9e4_SKS75T1GV1_MN_16122025.png",
+            "rating": {
+              "value": "4.4",
+              "count": "421.1k",
+              "_keys": [
+                "count",
+                "value"
+              ]
+            },
+            "vegClassifier": "VEG_CLASSIFIER_VEG",
+            "maxQuantity": 1,
+            "maxQuantityMessage": "Only 1 unit(s) of this item can be added per order.",
+            "_keys": [
+              "brandName",
+              "displayName",
+              "imageUrl",
+              "isInStockAndAvailable",
+              "maxQuantity",
+              "maxQuantityMessage",
+              "price",
+              "quantityDescription",
+              "rating",
+              "skuId",
+              "spinId",
+              "vegClassifier"
+            ]
+          },
+          {
+            "spinId": "<id:10>",
+            "_spinId_present": true,
+            "skuId": "VI3NLDIA3U",
+            "quantityDescription": "500 ml",
+            "displayName": "Amul Taaza Milky Milk",
+            "brandName": "Amul",
+            "price": {
+              "mrp": 29,
+              "offerPrice": 29,
+              "unitLevelPrice": "5.8/100 ml",
+              "_keys": [
+                "mrp",
+                "offerPrice",
+                "unitLevelPrice"
+              ]
+            },
+            "isInStockAndAvailable": true,
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/NI_CATALOG/IMAGES/ciw/2025/12/17/b42b731e-b555-4536-913a-265af70ec9e4_SKS75T1GV1_MN_16122025.png",
+            "rating": {
+              "value": "4.4",
+              "count": "421.1k",
+              "_keys": [
+                "count",
+                "value"
+              ]
+            },
+            "vegClassifier": "VEG_CLASSIFIER_VEG",
+            "maxQuantity": 19,
+            "maxQuantityMessage": "That’s all we have in stock at the moment!",
+            "_keys": [
+              "brandName",
+              "displayName",
+              "imageUrl",
+              "isInStockAndAvailable",
+              "maxQuantity",
+              "maxQuantityMessage",
+              "price",
+              "quantityDescription",
+              "rating",
+              "skuId",
+              "spinId",
+              "vegClassifier"
+            ]
+          }
+        ],
+        "productId": "JKFJW8ZUYW",
+        "parentProductId": "A084ZS3NR9",
+        "isPromoted": false,
+        "_keys": [
+          "brand",
+          "displayName",
+          "inStock",
+          "isAvail",
+          "isPromoted",
+          "parentProductId",
+          "productId",
+          "variations"
+        ]
+      },
+      {
+        "displayName": "Amul Gold Milk 1 Ltr",
+        "brand": "Amul",
+        "inStock": true,
+        "isAvail": true,
+        "variations": [
+          {
+            "spinId": "<id:10>",
+            "_spinId_present": true,
+            "skuId": "UI6PZ78SRG",
+            "quantityDescription": "1 ltr",
+            "displayName": "Amul Gold Milk 1 Ltr",
+            "brandName": "Amul",
+            "price": {
+              "mrp": 70,
+              "offerPrice": 70,
+              "unitLevelPrice": "7/100 ml",
+              "_keys": [
+                "mrp",
+                "offerPrice",
+                "unitLevelPrice"
+              ]
+            },
+            "isInStockAndAvailable": true,
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/NI_CATALOG/IMAGES/ciw/2025/12/17/b904f8df-ae15-417d-b161-ae3615197d62_S8PF9T8YLG_MN_17122025.png",
+            "rating": {
+              "value": "4.4",
+              "count": "136.9k",
+              "_keys": [
+                "count",
+                "value"
+              ]
+            },
+            "vegClassifier": "VEG_CLASSIFIER_VEG",
+            "maxQuantity": 6,
+            "maxQuantityMessage": "Only 6 unit(s) of this item can be added per order.",
+            "_keys": [
+              "brandName",
+              "displayName",
+              "imageUrl",
+              "isInStockAndAvailable",
+              "maxQuantity",
+              "maxQuantityMessage",
+              "price",
+              "quantityDescription",
+              "rating",
+              "skuId",
+              "spinId",
+              "vegClassifier"
+            ]
+          }
+        ],
+        "productId": "LLB1MIIY7S",
+        "parentProductId": "7796LOWIMZ",
+        "isPromoted": false,
+        "_keys": [
+          "brand",
+          "displayName",
+          "inStock",
+          "isAvail",
+          "isPromoted",
+          "parentProductId",
+          "productId",
+          "variations"
+        ]
+      },
+      "<…7 more>"
+    ],
+    "_keys": [
+      "nextOffset",
+      "products"
+    ]
+  }
+}

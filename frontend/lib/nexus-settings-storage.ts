@@ -16,6 +16,8 @@ export type NexusDemoSettings = {
   devMode: boolean;
   compactFeed: boolean;
   sessionHints: boolean;
+  /** When true, chat uses local mock MCP. When false, live mcp.swiggy.com (needs server token). */
+  useMockMcp: boolean;
   signalDeepWorkBlock: boolean;
   signalRainInPune: boolean;
   signalWatchParty: boolean;
@@ -31,6 +33,7 @@ export const DEMO_SETTINGS_DEFAULTS: NexusDemoSettings = {
   devMode: false,
   compactFeed: false,
   sessionHints: true,
+  useMockMcp: true,
   signalDeepWorkBlock: false,
   signalRainInPune: false,
   signalWatchParty: false,
@@ -63,6 +66,8 @@ function parse(raw: string | null): NexusDemoSettings {
         typeof o.compactFeed === "boolean" ? o.compactFeed : d.compactFeed,
       sessionHints:
         typeof o.sessionHints === "boolean" ? o.sessionHints : d.sessionHints,
+      useMockMcp:
+        typeof o.useMockMcp === "boolean" ? o.useMockMcp : d.useMockMcp,
       signalDeepWorkBlock:
         typeof o.signalDeepWorkBlock === "boolean"
           ? o.signalDeepWorkBlock
@@ -137,6 +142,7 @@ export function orchestrationContextFromSettings(
     city: s.deadlockCity,
     recipeHint: s.zerowasteRecipeHint,
     event: chronoEvent,
+    use_mock_mcp: s.useMockMcp,
   };
 }
 

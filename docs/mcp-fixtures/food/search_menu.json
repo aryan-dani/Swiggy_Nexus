@@ -1,0 +1,143 @@
+{
+  "tool": "search_menu",
+  "server": "food",
+  "captured_at": "2026-08-15T05:04:38.786640+00:00",
+  "meta": {
+    "itemId_present": false
+  },
+  "data": {
+    "items": [
+      {
+        "name": "<REDACTED>",
+        "price": 165,
+        "isVeg": true,
+        "menu_item_id": "200817214",
+        "inStock": 1,
+        "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2026/5/11/6789b938-af11-4072-8b79-138dcd2c09fc_cd76c2f3-7fb6-4339-b21b-01b92857677b.png_compressed",
+        "restaurant_id": "<id:7>",
+        "_restaurant_id_present": true,
+        "restaurant_name": "Tea Post",
+        "hasAddons": true,
+        "_keys": [
+          "hasAddons",
+          "imageUrl",
+          "inStock",
+          "isVeg",
+          "menu_item_id",
+          "name",
+          "price",
+          "restaurant_id",
+          "restaurant_name"
+        ]
+      },
+      {
+        "name": "<REDACTED>",
+        "price": 299,
+        "menu_item_id": "128692512",
+        "inStock": 1,
+        "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2025/5/27/ab3712ab-e918-4a46-aa4f-e0c235d6851a_19740221-19cc-4554-82da-e36b7c2a4557.jpeg",
+        "restaurant_id": "<id:6>",
+        "_restaurant_id_present": true,
+        "restaurant_name": "Behrouz Biryani",
+        "rating": "4.3",
+        "hasAddons": true,
+        "_keys": [
+          "hasAddons",
+          "imageUrl",
+          "inStock",
+          "menu_item_id",
+          "name",
+          "price",
+          "rating",
+          "restaurant_id",
+          "restaurant_name"
+        ]
+      },
+      {
+        "name": "<REDACTED>",
+        "price": 290,
+        "isVeg": true,
+        "menu_item_id": "151136747",
+        "inStock": 1,
+        "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2025/1/28/c9f6e971-2b93-4185-80cc-73170bf6c8c9_d630cf9f-0a46-4b59-9c46-c61ffed20bf6.JPG",
+        "restaurant_id": "<id:5>",
+        "_restaurant_id_present": true,
+        "restaurant_name": "Food Junction",
+        "rating": "3.7",
+        "_keys": [
+          "imageUrl",
+          "inStock",
+          "isVeg",
+          "menu_item_id",
+          "name",
+          "price",
+          "rating",
+          "restaurant_id",
+          "restaurant_name"
+        ]
+      },
+      {
+        "name": "<REDACTED>",
+        "price": 499,
+        "menu_item_id": "108372125",
+        "inStock": 1,
+        "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2024/9/26/39968a51-9b6c-4287-9266-a868454c1014_b25445e7-50ab-47a7-ae1a-a296dda60db6.jpeg",
+        "restaurant_id": "<id:5>",
+        "_restaurant_id_present": true,
+        "restaurant_name": "Eat Punjab",
+        "rating": "4.2",
+        "hasAddons": true,
+        "_keys": [
+          "hasAddons",
+          "imageUrl",
+          "inStock",
+          "menu_item_id",
+          "name",
+          "price",
+          "rating",
+          "restaurant_id",
+          "restaurant_name"
+        ]
+      },
+      {
+        "name": "<REDACTED>",
+        "price": 279,
+        "isVeg": true,
+        "menu_item_id": "150777978",
+        "inStock": 1,
+        "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2026/3/12/b846a68a-7462-44ca-bd9c-2317d57c87ea_fc37d3bf-7795-4f89-ae38-2e11b37df8a5.jpg",
+        "restaurant_id": "<id:6>",
+        "_restaurant_id_present": true,
+        "restaurant_name": "20Gms Protein",
+        "rating": "4.3",
+        "hasAddons": true,
+        "_keys": [
+          "hasAddons",
+          "imageUrl",
+          "inStock",
+          "isVeg",
+          "menu_item_id",
+          "name",
+          "price",
+          "rating",
+          "restaurant_id",
+          "restaurant_name"
+        ]
+      },
+      "<…5 more>"
+    ],
+    "total": 10,
+    "query": "biryani",
+    "hasMore": true,
+    "nextOffset": 10,
+    "totalItems": 422,
+    "_keys": [
+      "hasMore",
+      "items",
+      "nextOffset",
+      "query",
+      "total",
+      "totalItems"
+    ]
+  }
+}

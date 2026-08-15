@@ -1,0 +1,14 @@
+{
+  "tool": "your_go_to_items",
+  "server": "im",
+  "captured_at": "2026-08-15T05:04:44.159863+00:00",
+  "meta": {},
+  "data": {
+    "nextOffset": "0",
+    "products": [],
+    "_keys": [
+      "nextOffset",
+      "products"
+    ]
+  }
+}

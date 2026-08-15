@@ -1,0 +1,46 @@
+{
+  "tool": "_tools_list",
+  "server": "food",
+  "captured_at": "2026-08-15T05:04:33.758701+00:00",
+  "meta": {
+    "count": 18
+  },
+  "data": {
+    "tools": [
+      {
+        "name": "<REDACTED>",
+        "_keys": [
+          "name"
+        ]
+      },
+      {
+        "name": "<REDACTED>",
+        "_keys": [
+          "name"
+        ]
+      },
+      {
+        "name": "<REDACTED>",
+        "_keys": [
+          "name"
+        ]
+      },
+      {
+        "name": "<REDACTED>",
+        "_keys": [
+          "name"
+        ]
+      },
+      {
+        "name": "<REDACTED>",
+        "_keys": [
+          "name"
+        ]
+      },
+      "<…13 more>"
+    ],
+    "_keys": [
+      "tools"
+    ]
+  }
+}

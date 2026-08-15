@@ -38,6 +38,22 @@ export function getApiBase(): string {
   return base;
 }
 
+export type McpStatus = {
+  default_use_mock_mcp: boolean;
+  live_token_configured: boolean;
+  env_use_mock_mcp: string;
+  hint: string;
+};
+
+/** Whether this API host can serve live mcp.swiggy.com calls. */
+export async function fetchMcpStatus(): Promise<McpStatus> {
+  const res = await fetch(`${getApiBase()}/api/mcp/status`, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`MCP status HTTP ${res.status}`);
+  }
+  return (await res.json()) as McpStatus;
+}
+
 export async function postChatStream(
   message: string,
   context: Record<string, unknown> | undefined,

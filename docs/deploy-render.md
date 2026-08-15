@@ -32,11 +32,18 @@ git push origin main
 | `NOTIFICATION_PLATFORM` | API | `telegram` (or `console`) |
 | `INTERNAL_TICK_SECRET` | API | Shared secret for `POST /internal/tick` |
 | `OPENWEATHER_API_KEY` | API | Optional monsoon sensor |
-| `USE_MOCK_MCP` | API | Default `true` until Swiggy staging token |
+| `USE_MOCK_MCP` | API | Default server preference (`true` = mock). **Per-chat override** from the UI Settings / Signals bar (`use_mock_mcp` in context) wins for web chat. |
+| `SWIGGY_OAUTH_TOKEN` | API | **Required for Live MCP** on hosted. Paste Bearer from `python scripts/swiggy_oauth_login.py` (≈5 days TTL). Without it, Live toggle falls back to mock. |
+| `SWIGGY_CLIENT_ID` | API | Optional; `swiggy-mcp` from DCR |
 
-Full Concierge setup: [`docs/concierge-setup.md`](concierge-setup.md).
+### Live MCP on hosted (Render)
 
-Leave Telegram blank to use console HITL locally.
+1. Locally: `python scripts/swiggy_oauth_login.py` → copy `access_token` from `credentials/swiggy_token.json`.
+2. Render dashboard → **swiggy-nexus-api** → Environment → add `SWIGGY_OAUTH_TOKEN` (secret). Redeploy if needed.
+3. In the hosted UI: Settings → **Use mock MCP** off, or Signals bar → **Live**.
+4. Chat thinking line should say `MCP mode · LIVE`. Re-auth when the token expires (~5 days).
+
+No Vercel/frontend env change is required for the toggle — it is stored in the browser and sent with each chat request.
 
 ### 4. Open the app
 

@@ -18,6 +18,10 @@ services:
         value: https://.*\.(onrender|vercel)\.app
       - key: FRONTEND_ORIGIN
         value: https://swiggy-nexus.vercel.app
+      # Optional Live MCP (add as secret in dashboard — do not commit tokens):
+      # - key: SWIGGY_OAUTH_TOKEN
+      # - key: USE_MOCK_MCP
+      #   value: "true"
 
   - type: web
     name: swiggy-nexus-web

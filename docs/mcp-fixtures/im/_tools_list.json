@@ -1,0 +1,46 @@
+{
+  "tool": "_tools_list",
+  "server": "im",
+  "captured_at": "2026-08-15T05:04:34.067387+00:00",
+  "meta": {
+    "count": 14
+  },
+  "data": {
+    "tools": [
+      {
+        "name": "<REDACTED>",
+        "_keys": [
+          "name"
+        ]
+      },
+      {
+        "name": "<REDACTED>",
+        "_keys": [
+          "name"
+        ]
+      },
+      {
+        "name": "<REDACTED>",
+        "_keys": [
+          "name"
+        ]
+      },
+      {
+        "name": "<REDACTED>",
+        "_keys": [
+          "name"
+        ]
+      },
+      {
+        "name": "<REDACTED>",
+        "_keys": [
+          "name"
+        ]
+      },
+      "<…9 more>"
+    ],
+    "_keys": [
+      "tools"
+    ]
+  }
+}

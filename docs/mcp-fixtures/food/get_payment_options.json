@@ -1,0 +1,19 @@
+{
+  "tool": "get_payment_options",
+  "server": "food",
+  "captured_at": "2026-08-15T05:04:47.314647+00:00",
+  "meta": {},
+  "data": {
+    "allMethods": [],
+    "paymentAmount": null,
+    "addressId": "<id:20>",
+    "_addressId_present": true,
+    "placeOrderToolName": "place_food_order",
+    "_keys": [
+      "addressId",
+      "allMethods",
+      "paymentAmount",
+      "placeOrderToolName"
+    ]
+  }
+}

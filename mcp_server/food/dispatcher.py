@@ -442,6 +442,34 @@ def handle_report_error(params: dict[str, Any]) -> tuple[bool, dict | None, dict
     return True, data, None
 
 
+def handle_get_payment_options(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    simulated_latency_jitter_ms()
+    data = {
+        "paymentOptions": [{"id": "COD", "label": "Cash on Delivery", "available": True}],
+        "message": "Mock payment options (COD only)",
+    }
+    tool_log("food", "get_payment_options", params or {}, "1 option")
+    return True, data, None
+
+
+def handle_check_payment_status(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    simulated_latency_jitter_ms()
+    data = {"status": "NOT_STARTED", "message": "No in-flight payment (mock)"}
+    tool_log("food", "check_payment_status", params or {}, "NOT_STARTED")
+    return True, data, None
+
+
+def handle_confirm_order(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    return _error("VALIDATION", "confirm_order is HITL-only on live; mock refuses without PENDING_PAYMENT")
+
+
+def handle_get_food_delivery_status(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    simulated_latency_jitter_ms()
+    data = {"terminal": True, "message": "Widget-only ETA poller (mock stub)"}
+    tool_log("food", "get_food_delivery_status", params or {}, "stub")
+    return True, data, None
+
+
 _TOOLS: dict[str, Any] = {
     "get_addresses": handle_get_addresses,
     "search_restaurants": handle_search_restaurants,
@@ -458,6 +486,10 @@ _TOOLS: dict[str, Any] = {
     "get_food_order_details": handle_get_food_order_details,
     "track_food_order": handle_track_food_order,
     "report_error": handle_report_error,
+    "get_payment_options": handle_get_payment_options,
+    "check_payment_status": handle_check_payment_status,
+    "confirm_order": handle_confirm_order,
+    "get_food_delivery_status": handle_get_food_delivery_status,
 }
 
 

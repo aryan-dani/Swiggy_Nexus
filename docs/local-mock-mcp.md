@@ -1,6 +1,11 @@
 # Local mock Swiggy MCP (`/food`, `/im`, `/dineout`)
 
-Offline demo stack — **no** calls to `mcp.swiggy.com`. The FastAPI app exposes three POST endpoints plus the existing SSE chat routes.
+Offline demo stack. With a live OAuth token and `USE_MOCK_MCP` unset/false, the agent
+calls **`https://mcp.swiggy.com/{food|im|dineout}`** instead (see
+[`mcp-tool-contract.md`](mcp-tool-contract.md) and [`mcp-live-catalog.json`](mcp-live-catalog.json)).
+
+Local FastAPI still exposes three POST endpoints (JSON-RPC `tools/list` + `tools/call`,
+plus legacy `{method, params}`) for offline CI. Fixture replay: `MCP_REPLAY_FIXTURES=1`.
 
 ## Run
 
@@ -46,6 +51,18 @@ Each tool emits:
 - A second `[TOOL CALL] … [inproc]` line from [`backend/mcp_client.py`](../backend/mcp_client.py) (agent caller).
 
 Set **`LOCAL_MCP_HTTP=1`** to force real HTTP POSTs to `LOCAL_MCP_BASE` (default `http://127.0.0.1:8000`). Nested `/api/chat/stream` calling `/food` on one worker can **deadlock**; use `--workers 2` or stick with default **in-process** mode.
+
+### Live `mcp.swiggy.com` (feature-flag)
+
+Keep the mock for demos. To hit production MCP without changing agent code:
+
+1. `python scripts/swiggy_oauth_login.py` (DCR + PKCE; phone OTP in browser)
+2. Leave `USE_MOCK_MCP` unset/`false` so a present token selects live (or set `SWIGGY_OAUTH_TOKEN`)
+3. `python scripts/swiggy_mcp_tools_list.py` — refresh `docs/mcp-live-catalog.json` (44 tools)
+4. `python scripts/swiggy_mcp_smoke.py` / `python scripts/swiggy_mcp_probe.py` — read-only probes
+5. Offline/CI: `USE_MOCK_MCP=true` (pytest always forces this)
+
+[`backend/mcp_client.py`](../backend/mcp_client.py) routes to live JSON-RPC when not mocking; canonical names via [`backend/mcp_aliases.py`](../backend/mcp_aliases.py).
 
 ---
 

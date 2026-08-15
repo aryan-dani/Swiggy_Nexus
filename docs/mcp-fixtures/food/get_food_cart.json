@@ -1,0 +1,35 @@
+{
+  "tool": "get_food_cart",
+  "server": "food",
+  "captured_at": "2026-08-15T05:04:40.765972+00:00",
+  "meta": {},
+  "data": {
+    "statusCode": 0,
+    "statusMessage": "CART",
+    "statusTitle": null,
+    "ctaText": null,
+    "ctaAction": null,
+    "data": null,
+    "errorCodes": null,
+    "tid": "270ceb76-51d3-4b28-8294-b6370061aa37",
+    "sid": "t2aec4ac35d-c6d5-47d9-b28b-7981866bf",
+    "deviceId": "im-mcp-server",
+    "successful": true,
+    "addressId": "<id:20>",
+    "_addressId_present": true,
+    "_keys": [
+      "addressId",
+      "ctaAction",
+      "ctaText",
+      "data",
+      "deviceId",
+      "errorCodes",
+      "sid",
+      "statusCode",
+      "statusMessage",
+      "statusTitle",
+      "successful",
+      "tid"
+    ]
+  }
+}

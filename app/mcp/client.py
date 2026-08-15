@@ -15,7 +15,11 @@ import httpx
 
 from app.config import settings
 from app.mcp.oauth import SwiggyOAuthPKCE
-from backend.mcp_client import LocalMCPError, call_tool as call_mock_tool
+from backend.mcp_client import (
+    LocalMCPError,
+    parse_live_mcp_body,
+    call_tool as call_mock_tool,
+)
 
 log = logging.getLogger(__name__)
 
@@ -61,9 +65,14 @@ class AsyncSwiggyMCPClient:
         endpoint = self.endpoints[vertical]
         token = self.oauth.get_valid_access_token()
 
+        from backend.mcp_aliases import to_canonical
+
+        canonical = to_canonical(vertical, method)
+
         headers = {
             "Content-Type": "application/json",
-            "Accept": "application/json",
+            # Match live Streamable HTTP clients (JSON or SSE data frames).
+            "Accept": "application/json, text/event-stream",
         }
         if token:
             headers["Authorization"] = f"Bearer {token}"
@@ -73,7 +82,7 @@ class AsyncSwiggyMCPClient:
             "jsonrpc": "2.0",
             "method": "tools/call",
             "params": {
-                "name": method,
+                "name": canonical,
                 "arguments": params,
             },
             "id": 1,
@@ -94,26 +103,32 @@ class AsyncSwiggyMCPClient:
                         })
 
                     resp.raise_for_status()
-                    body = resp.json()
-
-                    # Check for JSON-RPC level errors
-                    if "error" in body:
-                        err = body["error"]
-                        raise SwiggyMCPError(
-                            err if isinstance(err, dict) else {"message": str(err)}
-                        )
-
-                    # Extract data from Swiggy's standard result envelope
-                    result = body.get("result", {})
-                    if isinstance(result, dict) and "success" in result:
-                        if not result.get("success"):
-                            err_data = result.get("error") or {"message": "Operation failed"}
+                    ctype = (resp.headers.get("content-type") or "").lower()
+                    if "text/event-stream" in ctype:
+                        body = None
+                        for line in resp.text.splitlines():
+                            if line.startswith("data:"):
+                                chunk = line[5:].strip()
+                                if chunk and chunk != "[DONE]":
+                                    body = json.loads(chunk)
+                                    break
+                        if body is None:
                             raise SwiggyMCPError(
-                                err_data if isinstance(err_data, dict) else {"message": str(err_data)}
+                                {
+                                    "code": "EMPTY_SSE",
+                                    "message": "No data frames in MCP SSE response",
+                                }
                             )
-                        return result.get("data")
+                    else:
+                        body = resp.json()
 
-                    return result.get("data", result)
+                    envelope = parse_live_mcp_body(body if isinstance(body, dict) else {})
+                    if envelope.get("success"):
+                        return envelope.get("data")
+                    err_data = envelope.get("error") or {"message": "Operation failed"}
+                    raise SwiggyMCPError(
+                        err_data if isinstance(err_data, dict) else {"message": str(err_data)}
+                    )
 
             except (httpx.HTTPStatusError, httpx.RequestError) as e:
                 last_exception = e

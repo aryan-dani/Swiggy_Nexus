@@ -264,16 +264,14 @@ def _dispatch_named_tool(
     args: dict[str, Any],
     session_id: str,
 ) -> tuple[str, str, Any]:
-    parts = name.split("_", 1)
-    if len(parts) == 2:
-        vertical, method = parts
-    else:
-        vertical, method = "food", name
+    from backend.mcp_aliases import resolve_llm_tool
+
+    vertical, method = resolve_llm_tool(name)
     if "requestId" in args:
         args["requestId"] = session_id
     if "request_id" in args:
         args["request_id"] = session_id
-    # Always pin cart mutations to the UI session (stage → confirm).
+    # Always pin cart mutations to the UI session (stage → confirm) for mock/replay.
     if "requestId" not in args and "request_id" not in args:
         args["requestId"] = session_id
     data = call_tool(vertical, method, args)
@@ -566,11 +564,50 @@ def _run_gemini_loop(
 
 
 def run_llm_agent(user_message: str, context: dict[str, Any] | None) -> Generator[dict[str, Any], None, None]:
+    from backend.mcp_client import (
+        apply_mock_override_from_context,
+        reset_mock_mcp_override,
+    )
+
     ctx = dict(context or {})
+    override_tok = apply_mock_override_from_context(ctx)
+    try:
+        yield from _run_llm_agent_inner(user_message, ctx)
+    finally:
+        reset_mock_mcp_override(override_tok)
+
+
+def _run_llm_agent_inner(
+    user_message: str, ctx: dict[str, Any]
+) -> Generator[dict[str, Any], None, None]:
+    from backend.mcp_client import live_token_configured, use_mock_mcp
+
     mcp_session = _resolve_mcp_session_id(ctx)
     # Ensure deterministic Chrono confirm legs see the same session key.
     ctx.setdefault("requestId", mcp_session)
     gemini_key, gemini_model, groq_key, groq_model, ollama_base, ollama_model, provider = _env_keys()
+
+    mode = "MOCK" if use_mock_mcp() else "LIVE"
+    live_ok = live_token_configured()
+    if not use_mock_mcp() and not live_ok:
+        yield {
+            "type": "thinking",
+            "payload": {
+                "text": (
+                    "Live MCP requested but no SWIGGY_OAUTH_TOKEN on this server. "
+                    "Falling back to mock — set the token on Render/local, or flip Mock MCP on."
+                ),
+            },
+        }
+        from backend.mcp_client import set_mock_mcp_override
+
+        set_mock_mcp_override(True)
+        mode = "MOCK"
+    else:
+        yield {
+            "type": "thinking",
+            "payload": {"text": f"MCP mode · {mode}" + (" · token ok" if live_ok and mode == "LIVE" else "")},
+        }
 
     # 60s WOW / Chrono-Host must stay on the deterministic multi-vertical script.
     # Free-form LLM tool loops burn rounds on search_restaurants/search_menu and

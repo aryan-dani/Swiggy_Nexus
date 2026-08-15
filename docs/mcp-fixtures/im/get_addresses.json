@@ -1,0 +1,94 @@
+{
+  "tool": "get_addresses",
+  "server": "im",
+  "captured_at": "2026-08-15T05:04:35.227948+00:00",
+  "meta": {
+    "addressId_present": true
+  },
+  "data": {
+    "addresses": [
+      {
+        "id": "<id:20>",
+        "_id_present": true,
+        "addressLine": "<REDACTED>",
+        "phoneNumber": "<REDACTED>",
+        "addressCategory": "Other",
+        "addressTag": "Ahemdabad Home",
+        "addressId": "<id:20>",
+        "_addressId_present": true,
+        "label": "Ahemdabad Home",
+        "_keys": [
+          "addressCategory",
+          "addressId",
+          "addressLine",
+          "addressTag",
+          "id",
+          "label",
+          "phoneNumber"
+        ]
+      },
+      {
+        "id": "<id:20>",
+        "_id_present": true,
+        "addressLine": "<REDACTED>",
+        "phoneNumber": "<REDACTED>",
+        "addressCategory": "Home",
+        "addressTag": "Home",
+        "addressId": "<id:20>",
+        "_addressId_present": true,
+        "label": "Home",
+        "_keys": [
+          "addressCategory",
+          "addressId",
+          "addressLine",
+          "addressTag",
+          "id",
+          "label",
+          "phoneNumber"
+        ]
+      },
+      {
+        "id": "<id:20>",
+        "_id_present": true,
+        "addressLine": "<REDACTED>",
+        "phoneNumber": "<REDACTED>",
+        "addressCategory": "Other",
+        "addressTag": "Hotel",
+        "addressId": "<id:20>",
+        "_addressId_present": true,
+        "label": "Hotel",
+        "_keys": [
+          "addressCategory",
+          "addressId",
+          "addressLine",
+          "addressTag",
+          "id",
+          "label",
+          "phoneNumber"
+        ]
+      }
+    ],
+    "total": 3,
+    "pagination": {
+      "page": 1,
+      "pageSize": 10,
+      "total": 3,
+      "totalPages": 1,
+      "hasMore": false,
+      "_keys": [
+        "hasMore",
+        "page",
+        "pageSize",
+        "total",
+        "totalPages"
+      ]
+    },
+    "imWidgetV2Eligible": false,
+    "_keys": [
+      "addresses",
+      "imWidgetV2Eligible",
+      "pagination",
+      "total"
+    ]
+  }
+}

@@ -239,6 +239,23 @@ def handle_report_error(params: dict[str, Any]) -> tuple[bool, dict | None, dict
     return True, {"reportLink": "mailto:builders@swiggy.in", "summary": "mock report"}, None
 
 
+def handle_get_payment_options(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    simulated_latency_jitter_ms()
+    return True, {"paymentOptions": [{"id": "COD", "label": "Cash", "available": True}]}, None
+
+
+def handle_check_payment_status(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    return True, {"status": "NOT_STARTED"}, None
+
+
+def handle_confirm_order(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    return _error("VALIDATION", "confirm_order is HITL-only; mock refuses")
+
+
+def handle_get_delivery_status(params: dict[str, Any]) -> tuple[bool, dict | None, dict | None]:
+    return True, {"terminal": True, "message": "Widget-only ETA poller (mock stub)"}, None
+
+
 _TOOLS = {
     "get_addresses": handle_get_addresses,
     "search_products": handle_search_products,
@@ -253,6 +270,10 @@ _TOOLS = {
     "create_address": handle_create_address,
     "delete_address": handle_delete_address,
     "report_error": handle_report_error,
+    "get_payment_options": handle_get_payment_options,
+    "check_payment_status": handle_check_payment_status,
+    "confirm_order": handle_confirm_order,
+    "get_delivery_status": handle_get_delivery_status,
 }
 
 

@@ -1,0 +1,71 @@
+{
+  "tool": "get_saved_locations",
+  "server": "dineout",
+  "captured_at": "2026-08-15T05:04:46.284937+00:00",
+  "meta": {
+    "loc_keys": []
+  },
+  "data": {
+    "data": {
+      "locations": [
+        {
+          "index": 1,
+          "id": "<id:20>",
+          "_id_present": true,
+          "addressLine": "<REDACTED>",
+          "phoneNumber": "<REDACTED>",
+          "addressCategory": "Other",
+          "addressTag": "Ahemdabad Home",
+          "_keys": [
+            "addressCategory",
+            "addressLine",
+            "addressTag",
+            "id",
+            "index",
+            "phoneNumber"
+          ]
+        },
+        {
+          "index": 2,
+          "id": "<id:20>",
+          "_id_present": true,
+          "addressLine": "<REDACTED>",
+          "phoneNumber": "<REDACTED>",
+          "addressCategory": "Home",
+          "addressTag": "Home",
+          "_keys": [
+            "addressCategory",
+            "addressLine",
+            "addressTag",
+            "id",
+            "index",
+            "phoneNumber"
+          ]
+        },
+        {
+          "index": 3,
+          "id": "<id:20>",
+          "_id_present": true,
+          "addressLine": "<REDACTED>",
+          "phoneNumber": "<REDACTED>",
+          "addressCategory": "Other",
+          "addressTag": "Hotel",
+          "_keys": [
+            "addressCategory",
+            "addressLine",
+            "addressTag",
+            "id",
+            "index",
+            "phoneNumber"
+          ]
+        }
+      ],
+      "_keys": [
+        "locations"
+      ]
+    },
+    "_keys": [
+      "data"
+    ]
+  }
+}

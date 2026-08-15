@@ -97,13 +97,18 @@ Commands: `/guests 6`, `/fuel`, `/status`, `/approve REQ-…`, `/reject REQ-…`
    `POST https://YOUR-API.onrender.com/internal/tick`  
    Header: `X-Nexus-Tick-Secret: <INTERNAL_TICK_SECRET>`.
 
-### 5. Swiggy staging (after legal)
+### 5. Swiggy MCP live (after whitelist / OAuth)
 
 ```bash
-python scripts/swiggy_oauth_login.py
+python scripts/swiggy_oauth_login.py   # browser phone+OTP → credentials/swiggy_token.json
+# backend/.env:
+#   USE_MOCK_MCP=false
+#   SWIGGY_CLIENT_ID=swiggy-mcp
+#   SWIGGY_OAUTH_TOKEN=<access_token from token file>
+python scripts/swiggy_mcp_smoke.py     # read-only get_addresses (PII redacted)
 ```
 
-Set `USE_MOCK_MCP=false` and `SWIGGY_OAUTH_TOKEN=…`. Concierge already uses **official** tool names — no code change.
+Leave `USE_MOCK_MCP=true` for the offline demo. Concierge + chat agent use **official** tool names — live path is gated only by the flag + Bearer token.
 
 ### 6. Frontend
 

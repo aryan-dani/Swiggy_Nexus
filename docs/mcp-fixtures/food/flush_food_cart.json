@@ -1,0 +1,41 @@
+{
+  "tool": "flush_food_cart",
+  "server": "food",
+  "captured_at": "2026-08-15T05:04:42.026425+00:00",
+  "meta": {},
+  "data": {
+    "statusCode": 0,
+    "statusMessage": "CART_DELETED_SUCCESSFULLY",
+    "statusTitle": null,
+    "ctaText": null,
+    "ctaAction": null,
+    "data": {
+      "result": "success",
+      "emailId": "",
+      "phoneNo": "8668205450",
+      "_keys": [
+        "emailId",
+        "phoneNo",
+        "result"
+      ]
+    },
+    "errorCodes": null,
+    "tid": "270ceb76-51d3-4b28-8294-b6370061aa37",
+    "sid": "t2aec4ac35d-c6d5-47d9-b28b-7981866bf",
+    "deviceId": "im-mcp-server",
+    "successful": true,
+    "_keys": [
+      "ctaAction",
+      "ctaText",
+      "data",
+      "deviceId",
+      "errorCodes",
+      "sid",
+      "statusCode",
+      "statusMessage",
+      "statusTitle",
+      "successful",
+      "tid"
+    ]
+  }
+}

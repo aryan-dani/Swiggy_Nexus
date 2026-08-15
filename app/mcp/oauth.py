@@ -44,12 +44,13 @@ class SwiggyOAuthPKCE:
         
         params = {
             "response_type": "code",
-            "client_id": settings.SWIGGY_CLIENT_ID or "nexus-social-concierge",
+            # DCR typically issues client_id "swiggy-mcp"; prefer env if set.
+            "client_id": settings.SWIGGY_CLIENT_ID or "swiggy-mcp",
             "redirect_uri": redirect_uri,
             "code_challenge": code_challenge,
             "code_challenge_method": "S256",
             "state": state,
-            "scope": "mcp:tools mcp:resources",
+            "scope": "mcp:tools mcp:resources mcp:prompts",
         }
         
         from urllib.parse import urlencode
@@ -67,7 +68,7 @@ class SwiggyOAuthPKCE:
             "code": code,
             "code_verifier": code_verifier,
             "redirect_uri": redirect_uri,
-            "client_id": settings.SWIGGY_CLIENT_ID or "nexus-social-concierge",
+            "client_id": settings.SWIGGY_CLIENT_ID or "swiggy-mcp",
         }
         
         async with httpx.AsyncClient(timeout=15.0) as client:

@@ -1,0 +1,16 @@
+{
+  "tool": "get_orders",
+  "server": "im",
+  "captured_at": "2026-08-15T05:04:45.894610+00:00",
+  "meta": {
+    "orderId_present": false
+  },
+  "data": {
+    "orders": [],
+    "hasMore": false,
+    "_keys": [
+      "hasMore",
+      "orders"
+    ]
+  }
+}

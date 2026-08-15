@@ -1,0 +1,577 @@
+{
+  "tool": "get_restaurant_menu",
+  "server": "food",
+  "captured_at": "2026-08-15T05:04:39.966997+00:00",
+  "meta": {
+    "itemId_present": true
+  },
+  "data": {
+    "restaurant": {
+      "id": "<id:6>",
+      "_id_present": true,
+      "name": "<REDACTED>",
+      "city": "Ahmedabad",
+      "areaName": "Chandkheda",
+      "cuisines": [
+        "Biryani",
+        "North Indian"
+      ],
+      "avgRating": 4.3,
+      "avgRatingString": "4.3",
+      "totalRatingsString": "3.7K+ ratings",
+      "costForTwoMessage": "₹500 for two",
+      "isOpen": true,
+      "deliveryTime": 40,
+      "slaString": "35-40 MINS",
+      "address": "KB Royal Phonex, D BLOCK , 1st Floor, Shop No 38, Nr Panchshlok Residency, Tragad Rd, Behind Satyamev Hospital, Chandkheda, Ahmedabad, Gujarat 382424",
+      "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/1a8dfa8b2a73ddf7c6193465ab24c898",
+      "_keys": [
+        "address",
+        "areaName",
+        "avgRating",
+        "avgRatingString",
+        "city",
+        "costForTwoMessage",
+        "cuisines",
+        "deliveryTime",
+        "id",
+        "imageUrl",
+        "isOpen",
+        "name",
+        "slaString",
+        "totalRatingsString"
+      ]
+    },
+    "categories": [
+      {
+        "title": "99 Store",
+        "categoryId": "1234567",
+        "items": [
+          {
+            "id": "<id:9>",
+            "_id_present": true,
+            "name": "<REDACTED>",
+            "description": "Savour the great taste with shallow fried chickpea nuggets with a blend of aromatic spices.",
+            "price": 119,
+            "inStock": 1,
+            "isVeg": true,
+            "rating": "4.7",
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2025/4/23/c00e9961-de6c-41bc-b901-3a0f9b4b67ce_a219b85d-6745-4ebb-b944-0494bc5fcb22.jpeg",
+            "hasVariants": true,
+            "hasAddons": true,
+            "_keys": [
+              "description",
+              "hasAddons",
+              "hasVariants",
+              "id",
+              "imageUrl",
+              "inStock",
+              "isVeg",
+              "name",
+              "price",
+              "rating"
+            ]
+          }
+        ],
+        "totalItems": 1,
+        "hasMoreItems": false,
+        "_keys": [
+          "categoryId",
+          "hasMoreItems",
+          "items",
+          "title",
+          "totalItems"
+        ]
+      },
+      {
+        "title": "Items at 199",
+        "categoryId": "123456",
+        "items": [
+          {
+            "id": "<id:9>",
+            "_id_present": true,
+            "name": "<REDACTED>",
+            "description": "Delicately spiced mutton koftas wrapped in a soft flatbread layered with green chutney and mint mayo...",
+            "price": 369,
+            "inStock": 1,
+            "isVeg": false,
+            "rating": "4.0",
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2025/5/23/f7741292-a54c-440c-a9d0-d91968691bb5_bf5189ff-28ce-421e-8516-eec2fc803bc0.jpeg",
+            "hasVariants": false,
+            "hasAddons": true,
+            "_keys": [
+              "description",
+              "hasAddons",
+              "hasVariants",
+              "id",
+              "imageUrl",
+              "inStock",
+              "isVeg",
+              "name",
+              "price",
+              "rating"
+            ]
+          },
+          {
+            "id": "<id:9>",
+            "_id_present": true,
+            "name": "<REDACTED>",
+            "description": "Tender Hara Bhara Kebabs encased in a soft flatbread lavished with a blend of green chutney and mint...",
+            "price": 299,
+            "inStock": 1,
+            "isVeg": true,
+            "rating": "2.8",
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2025/5/23/d5ead8d2-d253-4cbb-ad69-6a91faad39ff_441c9919-78c2-482f-bbc9-74df2d7eea40.jpeg",
+            "hasVariants": false,
+            "hasAddons": true,
+            "_keys": [
+              "description",
+              "hasAddons",
+              "hasVariants",
+              "id",
+              "imageUrl",
+              "inStock",
+              "isVeg",
+              "name",
+              "price",
+              "rating"
+            ]
+          },
+          {
+            "id": "<id:9>",
+            "_id_present": true,
+            "name": "<REDACTED>",
+            "description": "Spiced Paneer Tikka chunks cradled within a soft flatbread enriched with a layer of green chutney an...",
+            "price": 299,
+            "inStock": 1,
+            "isVeg": true,
+            "rating": "4.2",
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2025/5/23/bb144d5c-0e16-4455-b309-b59e13a47991_41aecd29-9fc9-431f-a919-5eacb4ec2995.jpeg",
+            "hasVariants": false,
+            "hasAddons": true,
+            "_keys": [
+              "description",
+              "hasAddons",
+              "hasVariants",
+              "id",
+              "imageUrl",
+              "inStock",
+              "isVeg",
+              "name",
+              "price",
+              "rating"
+            ]
+          },
+          {
+            "id": "<id:9>",
+            "_id_present": true,
+            "name": "<REDACTED>",
+            "description": "Spiced Murgh Seekh Kebab cradled in a soft flatbread, enriched with a fusion of green chutney and mi...",
+            "price": 339,
+            "inStock": 1,
+            "isVeg": false,
+            "rating": "3.8",
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2025/4/23/cdbba8a9-4432-4126-b63c-bce373beeacc_7ccbc0f7-85e8-4c66-a321-57af1d41b064.jpeg",
+            "hasVariants": false,
+            "hasAddons": true,
+            "_keys": [
+              "description",
+              "hasAddons",
+              "hasVariants",
+              "id",
+              "imageUrl",
+              "inStock",
+              "isVeg",
+              "name",
+              "price",
+              "rating"
+            ]
+          },
+          {
+            "id": "<id:9>",
+            "_id_present": true,
+            "name": "<REDACTED>",
+            "description": "Enjoy this royal curry made with authentic spicy masalas and juicy, succulent chicken tikka, char-gr...",
+            "price": 299,
+            "inStock": 1,
+            "isVeg": false,
+            "rating": "4.2",
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2025/5/27/1e4e0f01-654e-451b-90e0-e19f6ff9b468_75317044-8637-43ed-a901-e640691c9d2e.jpeg",
+            "hasVariants": true,
+            "hasAddons": true,
+            "_keys": [
+              "description",
+              "hasAddons",
+              "hasVariants",
+              "id",
+              "imageUrl",
+              "inStock",
+              "isVeg",
+              "name",
+              "price",
+              "rating"
+            ]
+          },
+          "<…1 more>"
+        ],
+        "totalItems": 6,
+        "hasMoreItems": false,
+        "_keys": [
+          "categoryId",
+          "hasMoreItems",
+          "items",
+          "title",
+          "totalItems"
+        ]
+      },
+      {
+        "title": "Items at 219",
+        "categoryId": "123456",
+        "items": [
+          {
+            "id": "<id:9>",
+            "_id_present": true,
+            "name": "<REDACTED>",
+            "description": "Relish this mildly sweet curry of tender paneer with an aromatic blend of kaju, fresh tomatoes, slic...",
+            "price": 279,
+            "inStock": 1,
+            "isVeg": true,
+            "rating": "3.5",
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2025/4/23/abcc6044-a9c8-4059-8138-f5010b2a7199_c72ba115-0712-4014-ab7e-582ac3d84819.jpeg",
+            "hasVariants": true,
+            "hasAddons": true,
+            "_keys": [
+              "description",
+              "hasAddons",
+              "hasVariants",
+              "id",
+              "imageUrl",
+              "inStock",
+              "isVeg",
+              "name",
+              "price",
+              "rating"
+            ]
+          },
+          {
+            "id": "<id:9>",
+            "_id_present": true,
+            "name": "<REDACTED>",
+            "description": "Get ready for a shaandaar peshkash of this mildly sweet curry of tender chicken, kaju, tomatoes, cho...",
+            "price": 299,
+            "inStock": 1,
+            "isVeg": false,
+            "rating": "4.3",
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2025/5/27/ab3712ab-e918-4a46-aa4f-e0c235d6851a_19740221-19cc-4554-82da-e36b7c2a4557.jpeg",
+            "hasVariants": true,
+            "hasAddons": true,
+            "_keys": [
+              "description",
+              "hasAddons",
+              "hasVariants",
+              "id",
+              "imageUrl",
+              "inStock",
+              "isVeg",
+              "name",
+              "price",
+              "rating"
+            ]
+          },
+          {
+            "id": "<id:9>",
+            "_id_present": true,
+            "name": "<REDACTED>",
+            "description": "Savour tender, char-grilled paneer chunks with this authentic tikka masala curry. A mouthwatering co...",
+            "price": 309,
+            "inStock": 1,
+            "isVeg": true,
+            "rating": "3.3",
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2025/4/23/a7ebd820-f88e-4401-a221-66b8c4669533_1fc79beb-ae21-4930-b99e-f1535eab41a5.jpeg",
+            "hasVariants": true,
+            "hasAddons": true,
+            "_keys": [
+              "description",
+              "hasAddons",
+              "hasVariants",
+              "id",
+              "imageUrl",
+              "inStock",
+              "isVeg",
+              "name",
+              "price",
+              "rating"
+            ]
+          },
+          {
+            "id": "<id:9>",
+            "_id_present": true,
+            "name": "<REDACTED>",
+            "description": "Relish a melange of shahi masalas in this peshkash of delectable, bite-sized mushrooms. Savour this ...",
+            "price": 289,
+            "inStock": 1,
+            "isVeg": true,
+            "rating": "3.1",
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2025/5/27/cda49c18-c88c-400a-a8dd-e5ec3782868e_9dbd324c-c4e1-4d94-8b9f-86e5bf0ecdc1.jpeg",
+            "hasVariants": true,
+            "hasAddons": true,
+            "_keys": [
+              "description",
+              "hasAddons",
+              "hasVariants",
+              "id",
+              "imageUrl",
+              "inStock",
+              "isVeg",
+              "name",
+              "price",
+              "rating"
+            ]
+          }
+        ],
+        "totalItems": 4,
+        "hasMoreItems": false,
+        "_keys": [
+          "categoryId",
+          "hasMoreItems",
+          "items",
+          "title",
+          "totalItems"
+        ]
+      },
+      {
+        "title": "Recommended",
+        "items": [
+          {
+            "id": "<id:9>",
+            "_id_present": true,
+            "name": "<REDACTED>",
+            "description": "Spiced Paneer Tikka chunks cradled within a soft flatbread enriched with a layer of green chutney an...",
+            "price": 299,
+            "inStock": 1,
+            "isVeg": true,
+            "rating": "4.2",
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2025/5/23/bb144d5c-0e16-4455-b309-b59e13a47991_41aecd29-9fc9-431f-a919-5eacb4ec2995.jpeg",
+            "hasVariants": false,
+            "hasAddons": true,
+            "_keys": [
+              "description",
+              "hasAddons",
+              "hasVariants",
+              "id",
+              "imageUrl",
+              "inStock",
+              "isVeg",
+              "name",
+              "price",
+              "rating"
+            ]
+          },
+          {
+            "id": "<id:9>",
+            "_id_present": true,
+            "name": "<REDACTED>",
+            "description": "Enriched with gentle flavours of Curd, this kebab is delicately spiced with cumin and ginger & beaut...",
+            "price": 149,
+            "inStock": 1,
+            "isVeg": true,
+            "rating": "4.2",
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2025/4/23/c5600cf8-e628-4582-a214-240b76c9e167_881460ab-a02d-4e39-8e13-3a6dc7025ef5.jpeg",
+            "hasVariants": true,
+            "hasAddons": true,
+            "_keys": [
+              "description",
+              "hasAddons",
+              "hasVariants",
+              "id",
+              "imageUrl",
+              "inStock",
+              "isVeg",
+              "name",
+              "price",
+              "rating"
+            ]
+          },
+          {
+            "id": "<id:9>",
+            "_id_present": true,
+            "name": "<REDACTED>",
+            "description": "Delicately spiced kebabs made with fresh beetroots & peanuts are served alongside the tender yet cri...",
+            "price": 489,
+            "inStock": 1,
+            "isVeg": true,
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2025/4/23/bb2cac75-e9ad-4a52-894d-1886253420b9_c7076e77-cbe8-4728-ae7e-6e1607158586.jpeg",
+            "hasVariants": false,
+            "hasAddons": true,
+            "_keys": [
+              "description",
+              "hasAddons",
+              "hasVariants",
+              "id",
+              "imageUrl",
+              "inStock",
+              "isVeg",
+              "name",
+              "price"
+            ]
+          },
+          {
+            "id": "<id:9>",
+            "_id_present": true,
+            "name": "<REDACTED>",
+            "description": "Savour the great taste with shallow fried chickpea nuggets with a blend of aromatic spices.",
+            "price": 119,
+            "inStock": 1,
+            "isVeg": true,
+            "rating": "4.7",
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2025/4/23/c00e9961-de6c-41bc-b901-3a0f9b4b67ce_a219b85d-6745-4ebb-b944-0494bc5fcb22.jpeg",
+            "hasVariants": true,
+            "hasAddons": true,
+            "_keys": [
+              "description",
+              "hasAddons",
+              "hasVariants",
+              "id",
+              "imageUrl",
+              "inStock",
+              "isVeg",
+              "name",
+              "price",
+              "rating"
+            ]
+          },
+          {
+            "id": "<id:9>",
+            "_id_present": true,
+            "name": "<REDACTED>",
+            "description": "Savour the goodness of finely minced potatoes, garden-fresh spinach and green peas, gently spiced wi...",
+            "price": 159,
+            "inStock": 1,
+            "isVeg": true,
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2025/4/23/62315592-8dea-45e0-8d21-1a006f0c0bdc_6367a1e2-fffb-4c75-abda-611879cdfeb7.jpeg",
+            "hasVariants": true,
+            "hasAddons": false,
+            "_keys": [
+              "description",
+              "hasAddons",
+              "hasVariants",
+              "id",
+              "imageUrl",
+              "inStock",
+              "isVeg",
+              "name",
+              "price"
+            ]
+          },
+          "<…3 more>"
+        ],
+        "totalItems": 8,
+        "hasMoreItems": false,
+        "_keys": [
+          "hasMoreItems",
+          "items",
+          "title",
+          "totalItems"
+        ]
+      },
+      {
+        "title": "Veg Specials",
+        "categoryId": "78009612",
+        "items": [
+          {
+            "id": "<id:9>",
+            "_id_present": true,
+            "name": "<REDACTED>",
+            "description": "Savour the goodness of finely minced potatoes, garden-fresh spinach and green peas, gently spiced wi...",
+            "price": 159,
+            "inStock": 1,
+            "isVeg": true,
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2025/4/23/62315592-8dea-45e0-8d21-1a006f0c0bdc_6367a1e2-fffb-4c75-abda-611879cdfeb7.jpeg",
+            "hasVariants": true,
+            "hasAddons": false,
+            "_keys": [
+              "description",
+              "hasAddons",
+              "hasVariants",
+              "id",
+              "imageUrl",
+              "inStock",
+              "isVeg",
+              "name",
+              "price"
+            ]
+          },
+          {
+            "id": "<id:9>",
+            "_id_present": true,
+            "name": "<REDACTED>",
+            "description": "Enriched with gentle flavours of Curd, this kebab is delicately spiced with cumin and ginger & beaut...",
+            "price": 149,
+            "inStock": 1,
+            "isVeg": true,
+            "rating": "4.2",
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2025/4/23/c5600cf8-e628-4582-a214-240b76c9e167_881460ab-a02d-4e39-8e13-3a6dc7025ef5.jpeg",
+            "hasVariants": true,
+            "hasAddons": false,
+            "_keys": [
+              "description",
+              "hasAddons",
+              "hasVariants",
+              "id",
+              "imageUrl",
+              "inStock",
+              "isVeg",
+              "name",
+              "price",
+              "rating"
+            ]
+          },
+          {
+            "id": "<id:9>",
+            "_id_present": true,
+            "name": "<REDACTED>",
+            "description": "Savour the great taste with shallow fried chickpea nuggets with a blend of aromatic spices.",
+            "price": 119,
+            "inStock": 1,
+            "isVeg": true,
+            "imageUrl": "https://media-assets.swiggy.com/swiggy/image/upload/FOOD_CATALOG/IMAGES/CMS/2025/4/23/c00e9961-de6c-41bc-b901-3a0f9b4b67ce_a219b85d-6745-4ebb-b944-0494bc5fcb22.jpeg",
+            "hasVariants": true,
+            "hasAddons": false,
+            "_keys": [
+              "description",
+              "hasAddons",
+              "hasVariants",
+              "id",
+              "imageUrl",
+              "inStock",
+              "isVeg",
+              "name",
+              "price"
+            ]
+          }
+        ],
+        "totalItems": 3,
+        "hasMoreItems": false,
+        "_keys": [
+          "categoryId",
+          "hasMoreItems",
+          "items",
+          "title",
+          "totalItems"
+        ]
+      }
+    ],
+    "totalCategories": 11,
+    "page": 1,
+    "pageSize": 5,
+    "hasMore": true,
+    "_keys": [
+      "categories",
+      "hasMore",
+      "page",
+      "pageSize",
+      "restaurant",
+      "totalCategories"
+    ]
+  }
+}

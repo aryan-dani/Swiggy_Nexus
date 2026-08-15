@@ -108,6 +108,9 @@ export function NexusSignalsBar({
           Scenario:{" "}
           <strong className="text-black">{scenarioLabel}</strong>
           {" · "}
+          MCP:{" "}
+          <strong className="text-black">{settings.useMockMcp ? "Mock" : "Live"}</strong>
+          {" · "}
           Signals ({signalsOn} on)
         </span>
         <ChevronDown
@@ -164,6 +167,39 @@ export function NexusSignalsBar({
                   onClick={() => applyScenario("" as NexusReviewerScenario, "cleared")}
                 >
                   <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                </button>
+              </div>
+
+              <p className="font-display text-[10px] font-black uppercase tracking-widest text-slate-500">
+                Swiggy MCP
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  className={cn(
+                    "rounded px-2.5 py-1.5 font-display text-[10px] font-black uppercase",
+                    settings.useMockMcp ? chipOn : chipOff
+                  )}
+                  onClick={() =>
+                    patch({ useMockMcp: true }, "MCP · Mock (offline catalog)")
+                  }
+                >
+                  Mock
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    "rounded px-2.5 py-1.5 font-display text-[10px] font-black uppercase",
+                    !settings.useMockMcp ? chipOn : chipOff
+                  )}
+                  onClick={() =>
+                    patch(
+                      { useMockMcp: false },
+                      "MCP · Live (needs SWIGGY_OAUTH_TOKEN on API)"
+                    )
+                  }
+                >
+                  Live
                 </button>
               </div>
 

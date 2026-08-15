@@ -1,0 +1,11 @@
+{
+  "tool": "get_food_orders",
+  "server": "food",
+  "captured_at": "2026-08-15T05:04:42.362452+00:00",
+  "meta": {
+    "orderId_present": false
+  },
+  "data": {
+    "_keys": []
+  }
+}

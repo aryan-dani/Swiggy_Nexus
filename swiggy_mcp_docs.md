@@ -1,7 +1,12 @@
 # Swiggy Builders Club MCP — Local Knowledge Base
 
-> **Source:** [mcp.swiggy.com/builders](https://mcp.swiggy.com/builders) (fetched 2026-07-06). 
+> **Source:** [mcp.swiggy.com/builders](https://mcp.swiggy.com/builders) (fetched 2026-07-06).
 > Synthesized for Swiggy Nexus local development. Not affiliated with Swiggy.
+>
+> **Live inventory (authoritative):** [`docs/mcp-live-catalog.json`](docs/mcp-live-catalog.json)
+> and [`docs/mcp-tool-contract.md`](docs/mcp-tool-contract.md) — refreshed via
+> `python scripts/swiggy_mcp_tools_list.py` against `tools/list` (44 tools as of 2026-08-15:
+> Food 18 / Instamart 14 / Dineout 12). Prefer those files over Section 6 counts below when they disagree.
 
 **Machine-readable upstream:**
 - Index: `https://mcp.swiggy.com/builders/llms.txt`

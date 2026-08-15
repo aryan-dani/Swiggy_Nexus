@@ -156,25 +156,49 @@ class DevModeBody(BaseModel):
 
 @app.get("/health")
 def health() -> dict[str, Any]:
+    from backend.mcp_client import live_token_configured, use_mock_mcp
+
     return {
         "status": "ok",
         "service": "swiggy-nexus-backend",
         "version": "0.3.0",
         "groq_configured": bool(os.environ.get("GROQ_API_KEY", "").strip()),
         "concierge": True,
-        "use_mock_mcp": os.environ.get("USE_MOCK_MCP", "true"),
+        "use_mock_mcp": use_mock_mcp(),
+        "use_mock_mcp_env": os.environ.get("USE_MOCK_MCP", ""),
+        "live_token_configured": live_token_configured(),
     }
 
 
 @app.get("/health/concierge")
 def health_concierge() -> dict[str, Any]:
+    from backend.mcp_client import live_token_configured, use_mock_mcp
+
     return {
         "status": "ok",
         "service": "indian-qol-concierge",
         "version": "0.3.0",
-        "use_mock_mcp": os.environ.get("USE_MOCK_MCP", "true"),
+        "use_mock_mcp": use_mock_mcp(),
+        "live_token_configured": live_token_configured(),
         "notification_platform": os.environ.get("NOTIFICATION_PLATFORM", "console"),
         "groq_configured": bool(os.environ.get("GROQ_API_KEY", "").strip()),
+    }
+
+
+@app.get("/api/mcp/status")
+def mcp_status() -> dict[str, Any]:
+    """Frontend toggle helper — whether live MCP can be enabled on this host."""
+    from backend.mcp_client import live_token_configured, use_mock_mcp
+
+    return {
+        "default_use_mock_mcp": use_mock_mcp(),
+        "live_token_configured": live_token_configured(),
+        "env_use_mock_mcp": os.environ.get("USE_MOCK_MCP", ""),
+        "hint": (
+            "OK to toggle Live in the UI"
+            if live_token_configured()
+            else "Set SWIGGY_OAUTH_TOKEN on this API host (Render secret / backend/.env) before Live works"
+        ),
     }
 
 

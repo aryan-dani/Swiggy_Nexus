@@ -39,7 +39,20 @@ DEMO_NIGHT_OUT_SENTENCE = (
 )
 
 # Money tools — never executed by the model.
-WRITE_TOOLS = {"food_place_order", "im_checkout", "dineout_book_table"}
+WRITE_TOOLS = {
+    "food_place_order",
+    "food_place_food_order",
+    "food_confirm_order",
+    "food_apply_food_coupon",
+    "im_checkout",
+    "im_confirm_order",
+    "im_apply_coupon",
+    "im_create_address",
+    "im_delete_address",
+    "dineout_book_table",
+    "dineout_confirm_order",
+}
+
 
 _ADDRESS_KEYS = ("addressId", "selectedAddressId")
 
@@ -142,20 +155,29 @@ async def _edit(chat_id: Any, message_id: int | None, text: str) -> None:
 
 
 def _split_tool(name: str) -> tuple[str, str]:
-    parts = name.split("_", 1)
-    if len(parts) == 2 and parts[0] in ("food", "im", "dineout"):
-        return parts[0], parts[1]
-    return "food", name
+    from backend.mcp_aliases import resolve_llm_tool
+
+    try:
+        vertical, method = resolve_llm_tool(name)
+        return vertical, method
+    except KeyError:
+        parts = name.split("_", 1)
+        if len(parts) == 2 and parts[0] in ("food", "im", "dineout"):
+            return parts[0], parts[1]
+        return "food", name
 
 
 def _with_defaults(vertical: str, method: str, args: dict[str, Any]) -> dict[str, Any]:
-    """Inject the demo address so a chatty model can skip the address lookup."""
+    """Inject address when mock/demo; live must use a real get_addresses id."""
+    from backend.mcp_client import use_mock_mcp
+
     out = dict(args)
     needs_address = vertical in ("food", "im") and method not in ("get_addresses",)
     if needs_address and not any(out.get(k) for k in _ADDRESS_KEYS):
-        out["addressId"] = settings.DEFAULT_ADDRESS_ID
-        if vertical == "im":
-            out["selectedAddressId"] = settings.DEFAULT_ADDRESS_ID
+        if use_mock_mcp():
+            out["addressId"] = settings.DEFAULT_ADDRESS_ID
+            if vertical == "im":
+                out["selectedAddressId"] = settings.DEFAULT_ADDRESS_ID
     if vertical == "dineout":
         out.setdefault("latitude", settings.HOME_LAT)
         out.setdefault("longitude", settings.HOME_LNG)

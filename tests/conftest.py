@@ -9,6 +9,15 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def force_mock_mcp(monkeypatch):
+    """Never hit mcp.swiggy.com from unit tests (even if a local OAuth token exists)."""
+    monkeypatch.setenv("USE_MOCK_MCP", "true")
+    monkeypatch.delenv("MCP_REPLAY_FIXTURES", raising=False)
+    # Clear any cached env reads if modules already imported
+    yield
+
+
+@pytest.fixture(autouse=True)
 def mute_telegram_outbound(monkeypatch):
     """Never push live Telegram HITL/QoL from pytest (belt-and-suspenders)."""
     from app.config import settings

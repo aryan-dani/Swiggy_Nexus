@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Bell, Database, LayoutGrid } from "lucide-react";
+import { ArrowLeft, Bell, Database, LayoutGrid, Radio } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
@@ -9,6 +9,7 @@ import { NexusLogoMark } from "@/components/nexus-logo-mark";
 
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { fetchMcpStatus, type McpStatus } from "@/lib/api";
 import {
   loadDemoSettings,
   saveDemoSettings,
@@ -39,9 +40,13 @@ function Section({
 
 export default function SettingsPage() {
   const [s, setS] = useState<NexusDemoSettings | null>(null);
+  const [mcp, setMcp] = useState<McpStatus | null>(null);
 
   useEffect(() => {
     setS(loadDemoSettings());
+    void fetchMcpStatus()
+      .then(setMcp)
+      .catch(() => setMcp(null));
   }, []);
 
   if (!s) {
@@ -88,6 +93,36 @@ export default function SettingsPage() {
       >
         <Section title="Workspace">
           <div className="flex items-center justify-between gap-4 border-b-2 border-black/10 py-4 first:pt-0">
+            <div className="flex items-center gap-3">
+              <Radio className="h-5 w-5 shrink-0 text-black" />
+              <div>
+                <Label htmlFor="mock-mcp" className="font-display text-sm font-bold">
+                  Use mock MCP
+                </Label>
+                <p className="mt-1 text-xs font-medium text-slate-500">
+                  On = offline catalog. Off = live mcp.swiggy.com (needs OAuth token on the API host).
+                </p>
+                {mcp && (
+                  <p className="mt-1 font-mono text-[10px] text-slate-500">
+                    Server token: {mcp.live_token_configured ? "configured" : "missing"} · {mcp.hint}
+                  </p>
+                )}
+              </div>
+            </div>
+            <Switch
+              id="mock-mcp"
+              checked={s.useMockMcp}
+              onCheckedChange={(v) => {
+                if (!v && mcp && !mcp.live_token_configured) {
+                  nexusToast(
+                    "API has no SWIGGY_OAUTH_TOKEN — Live falls back to mock until you set it on Render/local."
+                  );
+                }
+                patch({ useMockMcp: v });
+              }}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-4 border-b-2 border-black/10 py-4">
             <div className="flex items-center gap-3">
               <NexusLogoMark className="h-9 w-9 shrink-0" />
               <div>

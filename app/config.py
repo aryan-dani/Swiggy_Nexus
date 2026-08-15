@@ -68,7 +68,10 @@ class Settings(BaseSettings):
     HOME_CITY: str = Field(default="Pune")
     HOME_LAT: float = Field(default=18.5204)
     HOME_LNG: float = Field(default=73.8567)
-    DEFAULT_ADDRESS_ID: str = Field(default="addr_kp_001")
+    DEFAULT_ADDRESS_ID: str = Field(
+        default="addr_kp_001",
+        description="Mock-only fallback address. Live mode must use get_addresses.",
+    )
 
 
 settings = Settings()
