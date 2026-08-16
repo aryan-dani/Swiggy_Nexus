@@ -102,7 +102,9 @@ export function DashboardHeader({
           variants={fadeIn}
           className="font-display text-sm font-black text-black md:hidden"
         >
-          Nexus
+          <Link href="/" className="hover:underline">
+            Nexus
+          </Link>
         </motion.span>
       </motion.div>
 

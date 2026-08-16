@@ -104,7 +104,9 @@ export function AppSidebar({
         variants={fadeUp}
         className="mb-6 w-full min-w-0 shrink-0 py-4"
       >
-        <NexusLockup />
+        <Link href="/" className="block w-full min-w-0">
+          <NexusLockup />
+        </Link>
       </motion.div>
 
       <div className="neo-scrollbar flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-2 overflow-x-hidden overflow-y-auto px-1.5 pb-4 pt-1">

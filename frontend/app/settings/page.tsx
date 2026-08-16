@@ -70,7 +70,7 @@ export default function SettingsPage() {
           <Link
             href="/"
             className="flex h-10 w-10 shrink-0 items-center justify-center border-2 border-black bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-colors hover:bg-slate-50"
-            aria-label="Back to Nexus"
+            aria-label="Back to home"
           >
             <ArrowLeft className="h-5 w-5" />
           </Link>
@@ -256,10 +256,10 @@ export default function SettingsPage() {
 
         <motion.div variants={fadeUp} className="pb-12">
           <Link
-            href="/"
+            href="/app"
             className="inline-flex border-2 border-black bg-primary-container px-5 py-3 font-display text-xs font-black uppercase tracking-widest text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-shadow hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]"
           >
-            Back to Nexus
+            Back to console
           </Link>
         </motion.div>
       </motion.main>
