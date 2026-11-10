@@ -178,15 +178,164 @@ def _sse_tool(server_key: str, http_path: str, method: str, params: dict[str, An
     }
 
 
-def _pick_address_id(ctx: dict[str, Any], addrs: dict[str, Any]) -> str:
-    aid = str(ctx.get("addressId") or ctx.get("address_id") or "")
+def _address_rows(addrs: Any) -> list[dict[str, Any]]:
     blob = addrs if isinstance(addrs, dict) else {}
     plist = blob.get("addresses") or []
     if not plist and isinstance(blob.get("data"), dict):
         plist = blob["data"].get("addresses") or []
-    if not aid and plist and isinstance(plist[0], dict):
-        aid = str(plist[0].get("addressId") or plist[0].get("id") or "")
-    return aid
+    return [a for a in plist if isinstance(a, dict)]
+
+
+def _address_haystack(row: dict[str, Any]) -> str:
+    parts = [
+        row.get("label"),
+        row.get("addressTag"),
+        row.get("addressCategory"),
+        row.get("addressLine"),
+        row.get("line1"),
+        row.get("area"),
+        row.get("city"),
+    ]
+    return " ".join(str(p) for p in parts if p).lower()
+
+
+def _match_address(addrs: Any, hint: str | None) -> str:
+    """Pick addressId by explicit id, tag, city, or label substring."""
+    rows = _address_rows(addrs)
+    if not rows:
+        return ""
+    needle = str(hint or "").strip().lower()
+    if needle:
+        for a in rows:
+            aid = str(a.get("addressId") or a.get("id") or "")
+            if aid and aid.lower() == needle:
+                return aid
+        for a in rows:
+            if needle in _address_haystack(a):
+                return str(a.get("addressId") or a.get("id") or "")
+    return str(rows[0].get("addressId") or rows[0].get("id") or "")
+
+
+def _pick_address_id(ctx: dict[str, Any], addrs: dict[str, Any]) -> str:
+    aid = str(ctx.get("addressId") or ctx.get("address_id") or "")
+    if aid:
+        return aid
+    return _match_address(addrs, None)
+
+
+def _leg_address_ids(ctx: dict[str, Any], addrs: Any) -> dict[str, str]:
+    """Resolve per-vertical drop points (three-city courier).
+
+    Event/context keys (first match wins per leg):
+    ``imAddressId`` / ``imAddressTag`` / ``imCity``,
+    ``foodAddressId`` / ``foodAddressTag`` / ``foodCity`` (dinner rescue),
+    ``dessertAddressId`` / ``dessertAddressTag`` / ``dessertCity``.
+    """
+    event = ctx.get("event") if isinstance(ctx.get("event"), dict) else {}
+
+    def _hint(*keys: str) -> str | None:
+        for src in (ctx, event):
+            for k in keys:
+                val = src.get(k)
+                if val is not None and str(val).strip():
+                    return str(val).strip()
+        return None
+
+    default = _pick_address_id(ctx, addrs if isinstance(addrs, dict) else {})
+    im = _match_address(
+        addrs,
+        _hint("imAddressId", "im_address_id", "imAddressTag", "imCity", "im_city"),
+    ) or default
+    food = _match_address(
+        addrs,
+        _hint("foodAddressId", "food_address_id", "foodAddressTag", "foodCity", "food_city"),
+    ) or default
+    dessert = _match_address(
+        addrs,
+        _hint(
+            "dessertAddressId",
+            "dessert_address_id",
+            "dessertAddressTag",
+            "dessertCity",
+            "dessert_city",
+        ),
+    ) or food or default
+    return {"im": im, "food": food, "dessert": dessert, "default": default}
+
+
+def _match_dineout_location(locs: list[dict[str, Any]], hint: str | None) -> dict[str, Any]:
+    if not locs:
+        return {}
+    needle = str(hint or "").strip().lower()
+    if needle:
+        for loc in locs:
+            lid = str(loc.get("id") or "")
+            if lid and lid.lower() == needle:
+                return loc
+            hay = " ".join(
+                str(loc.get(k) or "")
+                for k in ("addressTag", "label", "addressLine", "addressCategory")
+            ).lower()
+            if needle in hay:
+                return loc
+    return locs[0]
+
+
+def _slots_usable(slots_blob: Any) -> bool:
+    if not isinstance(slots_blob, dict):
+        return False
+    slots = slots_blob.get("slots")
+    if isinstance(slots, list) and len(slots) > 0:
+        return True
+    return bool(slots_blob.get("available")) is True and bool(slots)
+
+
+def _food_cart_total(cart: Any) -> int | None:
+    if not isinstance(cart, dict):
+        return None
+    for key in ("total", "subtotal_inr"):
+        if cart.get(key) is not None:
+            try:
+                return int(cart[key])
+            except (TypeError, ValueError):
+                continue
+    bill = cart.get("bill") if isinstance(cart.get("bill"), dict) else {}
+    for key in ("grandTotal", "total_inr", "itemTotal"):
+        if bill.get(key) is not None:
+            try:
+                return int(bill[key])
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def _best_cod_coupon(coupons: list[dict[str, Any]], cart_total: int | None) -> dict[str, Any] | None:
+    """Prefer largest COD-eligible discount that fits the staged cart."""
+    eligible: list[dict[str, Any]] = []
+    for c in coupons:
+        if not isinstance(c, dict):
+            continue
+        if c.get("requiresOnlinePayment"):
+            continue
+        code = str(c.get("code") or "").strip()
+        if not code:
+            continue
+        discount = int(c.get("discount_inr") or c.get("discount") or 0)
+        eligible.append({**c, "code": code, "discount_inr": discount})
+    if not eligible:
+        return None
+    eligible.sort(key=lambda c: int(c.get("discount_inr") or 0), reverse=True)
+    if cart_total is None:
+        return eligible[0]
+    # FLAT100 is "above ₹499" in mock copy — prefer it when cart qualifies.
+    for c in eligible:
+        code = str(c.get("code") or "").upper()
+        disc = int(c.get("discount_inr") or 0)
+        if code == "FLAT100" and cart_total >= 499:
+            return c
+        if disc > 0 and cart_total > disc:
+            return c
+    return eligible[-1]
 
 
 def _dineout_locations(blob: Any) -> list[dict[str, Any]]:
@@ -600,13 +749,30 @@ def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[st
         "orchestrating Dineout + Instamart + Food."
     )
 
-    # --- Dineout leg ---
+    # --- Addresses first (three-city courier needs all ids before carts) ---
+    yield _thinking("Resolving delivery addresses for each vertical.")
+    addr_any = call_tool("food", "get_addresses", {})
+    yield {"type": "tool", "payload": _sse_tool("food", "/food", "get_addresses", {}, addr_any)}
+    addrs = addr_any if isinstance(addr_any, dict) else {}
+    leg_addrs = _leg_address_ids(ctx, addrs)
+    im_addr_id = leg_addrs["im"]
+    food_addr_id = leg_addrs["food"]
+    dessert_addr_id = leg_addrs["dessert"]
+
+    # --- Dineout leg (or slot-gone rescue) ---
     yield _thinking("Dineout: resolving saved locations.")
     locs_any = call_tool("dineout", "get_saved_locations", {})
     yield {"type": "tool", "payload": _sse_tool("dineout", "/dineout", "get_saved_locations", {}, locs_any)}
     locs = locs_any if isinstance(locs_any, dict) else {}
     loc_rows = _dineout_locations(locs)
-    loc0 = loc_rows[0] if loc_rows else {}
+    dine_hint = (
+        event.get("dineoutAddressTag")
+        or event.get("dineoutCity")
+        or event.get("dineoutLocationId")
+        or ctx.get("dineoutAddressTag")
+        or ctx.get("dineoutCity")
+    )
+    loc0 = _match_dineout_location(loc_rows, str(dine_hint) if dine_hint else None)
     lat, lng = _loc_coords(loc0)
 
     yield _thinking(f"Dineout: searching {cuisine} restaurants for {guests} guests.")
@@ -615,33 +781,63 @@ def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[st
         dine_params["latitude"] = lat
         dine_params["longitude"] = lng
     dine_search = call_tool("dineout", "search_restaurants_dineout", dine_params)
-    yield {"type": "tool", "payload": _sse_tool("dineout", "/dineout", "search_restaurants_dineout", dine_params, dine_search)}
+    yield {
+        "type": "tool",
+        "payload": _sse_tool("dineout", "/dineout", "search_restaurants_dineout", dine_params, dine_search),
+    }
     ds = dine_search if isinstance(dine_search, dict) else {}
     dine_list = _restaurant_rows(ds)
     rest_pick = dine_list[pick_seed % len(dine_list)] if dine_list else {}
     rest_id = _restaurant_id(rest_pick)
-    if not rest_id and use_mock_mcp():
-        rest_id = "do_italian_804"
 
     slot_label = "TBD"
     slots_any: Any = {"slots": []}
+    rescue_mode = not bool(rest_id)
+    rescue_reason = "no_restaurants" if rescue_mode else ""
+
     if rest_id:
-        slot_params = {"restaurantId": rest_id, "guestCount": guests, "date": "2026-07-12", "partySize": guests}
-        slots_any = call_tool("dineout", "get_available_slots", slot_params)
-        yield {"type": "tool", "payload": _sse_tool("dineout", "/dineout", "get_available_slots", slot_params, slots_any)}
-        slots_blob = slots_any if isinstance(slots_any, dict) else {}
-        slot0 = (slots_blob.get("slots") or [{}])[0] if isinstance(slots_blob, dict) else {}
-        if isinstance(slot0, dict):
-            slot_label = str(slot0.get("label") or slot0.get("time") or "20:00")
+        slot_params = {
+            "restaurantId": rest_id,
+            "guestCount": guests,
+            "date": "2026-07-12",
+            "partySize": guests,
+        }
+        try:
+            slots_any = call_tool("dineout", "get_available_slots", slot_params)
+            yield {
+                "type": "tool",
+                "payload": _sse_tool(
+                    "dineout", "/dineout", "get_available_slots", slot_params, slots_any
+                ),
+            }
+            if not _slots_usable(slots_any):
+                rescue_mode = True
+                rescue_reason = "slots_empty"
+            else:
+                slots_blob = slots_any if isinstance(slots_any, dict) else {}
+                slot0 = (slots_blob.get("slots") or [{}])[0]
+                if isinstance(slot0, dict):
+                    slot_label = str(slot0.get("label") or slot0.get("time") or "20:00")
+        except LocalMCPError as e:
+            yield {
+                "type": "tool",
+                "payload": {
+                    **_sse_tool("dineout", "/dineout", "get_available_slots", slot_params, {}),
+                    "result": {"success": False, "error": e.payload},
+                },
+            }
+            rescue_mode = True
+            rescue_reason = "slot_unavailable"
+
+    if rescue_mode:
+        yield _thinking(
+            "Dineout table unavailable — pivoting to Food dinner delivery + Instamart supplies "
+            f"({rescue_reason or 'rescue'})."
+        )
 
     # --- Instamart leg ---
-    yield _thinking(f"Instamart: staging supplies — “{im_query}”.")
-    addr_any = call_tool("food", "get_addresses", {})
-    yield {"type": "tool", "payload": _sse_tool("food", "/food", "get_addresses", {}, addr_any)}
-    addrs = addr_any if isinstance(addr_any, dict) else {}
-    addr_id = _pick_address_id(ctx, addrs)
-
-    im_search = call_tool("im", "search_products", {"addressId": addr_id, "query": im_query})
+    yield _thinking(f"Instamart: staging supplies — “{im_query}” @ {im_addr_id or 'default'}.")
+    im_search = call_tool("im", "search_products", {"addressId": im_addr_id, "query": im_query})
     yield {"type": "tool", "payload": _sse_tool("im", "/im", "search_products", {"query": im_query}, im_search)}
     im_prods = _im_products(im_search)
     im_lines = _im_cart_lines(im_prods)
@@ -649,11 +845,18 @@ def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[st
     im_cart_any: Any = {"items": []}
     im_cart_view: Any = {"items": []}
     if im_lines:
-        im_cart_params = {"requestId": uuid_session, "selectedAddressId": addr_id, "items": im_lines}
+        im_cart_params = {
+            "requestId": uuid_session,
+            "selectedAddressId": im_addr_id,
+            "items": im_lines,
+        }
         im_cart_any = call_tool("im", "update_cart", im_cart_params)
         yield {"type": "tool", "payload": _sse_tool("im", "/im", "update_cart", im_cart_params, im_cart_any)}
         im_cart_view = call_tool("im", "get_cart", {"requestId": uuid_session})
-        yield {"type": "tool", "payload": _sse_tool("im", "/im", "get_cart", {"requestId": uuid_session}, im_cart_view)}
+        yield {
+            "type": "tool",
+            "payload": _sse_tool("im", "/im", "get_cart", {"requestId": uuid_session}, im_cart_view),
+        }
     im_line_summaries = _im_line_summaries(im_cart_view)
     im_cart_id = (
         (im_cart_any or {}).get("cart_id")
@@ -661,58 +864,143 @@ def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[st
         else None
     ) or (im_cart_view.get("cart_id") if isinstance(im_cart_view, dict) else None) or f"cart_im_{uuid_session}"
 
-    # --- Food dessert leg (staged) ---
-    yield _thinking(f"Food: staging “{dessert_query}” dessert for ~10 PM (reminder — no scheduled delivery in v1).")
-    dessert_search = call_tool("food", "search_restaurants", {"addressId": addr_id, "query": dessert_query})
-    yield {"type": "tool", "payload": _sse_tool("food", "/food", "search_restaurants", {"query": dessert_query}, dessert_search)}
-    ds_food = dessert_search if isinstance(dessert_search, dict) else {}
+    # --- Food leg: dinner rescue OR dessert staged ---
+    food_query = cuisine if rescue_mode else dessert_query
+    food_addr = food_addr_id if rescue_mode else dessert_addr_id
+    food_role = "dinner_delivery" if rescue_mode else "dessert"
+    yield _thinking(
+        f"Food: staging “{food_query}” ({food_role}) @ {food_addr or 'default'}."
+    )
+    food_search = call_tool("food", "search_restaurants", {"addressId": food_addr, "query": food_query})
+    yield {
+        "type": "tool",
+        "payload": _sse_tool("food", "/food", "search_restaurants", {"query": food_query}, food_search),
+    }
+    ds_food = food_search if isinstance(food_search, dict) else {}
     food_list = [r for r in (ds_food.get("restaurants") or []) if isinstance(r, dict)] or [{}]
-    dessert_pick = _pick_dessert_restaurant(food_list, pick_seed)
-    dessert_rid = str(dessert_pick.get("restaurant_id", "fd_gelato_108"))
-    dessert_name = str(dessert_pick.get("name") or dessert_query.title())
+    if rescue_mode:
+        # Prefer cuisine match; fall back to seed pick among open venues.
+        cuisine_hits = [
+            r
+            for r in food_list
+            if cuisine in " ".join(str(c).lower() for c in (r.get("cuisines") or []) + [str(r.get("name") or "")])
+        ]
+        pool = cuisine_hits or [r for r in food_list if isinstance(r, dict)] or [{}]
+        food_pick = pool[pick_seed % len(pool)]
+    else:
+        food_pick = _pick_dessert_restaurant(food_list, pick_seed)
+    food_rid = str(food_pick.get("restaurant_id", "fd_gelato_108" if not rescue_mode else "fd_dom_101"))
+    food_name = str(food_pick.get("name") or food_query.title())
 
-    menu_any = call_tool("food", "get_restaurant_menu", {"restaurantId": dessert_rid, "addressId": addr_id})
-    yield {"type": "tool", "payload": _sse_tool("food", "/food", "get_restaurant_menu", {"restaurantId": dessert_rid}, menu_any)}
+    menu_any = call_tool(
+        "food", "get_restaurant_menu", {"restaurantId": food_rid, "addressId": food_addr}
+    )
+    yield {
+        "type": "tool",
+        "payload": _sse_tool("food", "/food", "get_restaurant_menu", {"restaurantId": food_rid}, menu_any),
+    }
 
-    # Always stage an item that belongs to this restaurant's menu — never a hardcoded foreign id.
-    dessert_item_id = _first_menu_item_id(menu_any)
-    if not dessert_item_id:
-        dessert_rid = "fd_gelato_108"
-        dessert_name = "Gelato Vivo"
-        dessert_item_id = "gv_pistachio"
+    food_item_id = _first_menu_item_id(menu_any)
+    if not food_item_id:
+        if rescue_mode:
+            food_rid = "fd_dom_101"
+            food_name = "Domino's Pizza"
+            food_item_id = "dom_mar_med"
+        else:
+            food_rid = "fd_gelato_108"
+            food_name = "Gelato Vivo"
+            food_item_id = "gv_pistachio"
 
+    food_qty = max(2, min(guests, 6)) if rescue_mode else 2
     food_cart_params = {
         "requestId": uuid_session,
-        "restaurantId": dessert_rid,
-        "addressId": addr_id,
-        "cartItems": [{"itemId": dessert_item_id, "quantity": 2}],
-        "lines": [{"item_id": dessert_item_id, "qty": 2}],
+        "restaurantId": food_rid,
+        "addressId": food_addr,
+        "cartItems": [{"itemId": food_item_id, "quantity": food_qty}],
+        "lines": [{"item_id": food_item_id, "qty": food_qty}],
     }
     food_cart_any = call_tool("food", "update_food_cart", food_cart_params)
-    yield {"type": "tool", "payload": _sse_tool("food", "/food", "update_food_cart", food_cart_params, food_cart_any)}
-    food_cart_view = call_tool("food", "get_food_cart", {"requestId": uuid_session, "addressId": addr_id})
-    yield {"type": "tool", "payload": _sse_tool("food", "/food", "get_food_cart", {"addressId": addr_id}, food_cart_view)}
+    yield {
+        "type": "tool",
+        "payload": _sse_tool("food", "/food", "update_food_cart", food_cart_params, food_cart_any),
+    }
+    food_cart_view = call_tool(
+        "food", "get_food_cart", {"requestId": uuid_session, "addressId": food_addr}
+    )
+    yield {
+        "type": "tool",
+        "payload": _sse_tool("food", "/food", "get_food_cart", {"addressId": food_addr}, food_cart_view),
+    }
+
+    # --- Coupon heist (stage recommendation; apply on confirm dessert) ---
+    cart_before = _food_cart_total(food_cart_view)
+    coupon_pick: dict[str, Any] | None = None
+    coupons_blob: Any = {"coupons": []}
+    try:
+        coupons_blob = call_tool("food", "fetch_food_coupons", {"addressId": food_addr})
+        yield {
+            "type": "tool",
+            "payload": _sse_tool("food", "/food", "fetch_food_coupons", {}, coupons_blob),
+        }
+        coupon_rows = []
+        if isinstance(coupons_blob, dict):
+            coupon_rows = [c for c in (coupons_blob.get("coupons") or []) if isinstance(c, dict)]
+        coupon_pick = _best_cod_coupon(coupon_rows, cart_before)
+    except LocalMCPError:
+        coupon_pick = None
+
+    coupon_code = str((coupon_pick or {}).get("code") or "")
+    coupon_discount = int((coupon_pick or {}).get("discount_inr") or 0)
+    cart_after = (
+        max(0, cart_before - coupon_discount) if cart_before is not None and coupon_discount else cart_before
+    )
 
     _rest0 = rest_pick if isinstance(rest_pick, dict) else {}
     im_bundle = dict(im_cart_view) if isinstance(im_cart_view, dict) else {}
     im_bundle["cart_id"] = im_cart_id
     im_bundle["requestId"] = uuid_session
+    im_bundle["selectedAddressId"] = im_addr_id
     im_bundle["items"] = im_line_summaries or im_bundle.get("items") or []
     food_bundle = dict(food_cart_view) if isinstance(food_cart_view, dict) else {}
     food_bundle["requestId"] = uuid_session
+    food_bundle["addressId"] = food_addr
+    food_bundle["role"] = food_role
     if isinstance(food_cart_any, dict) and food_cart_any.get("cart_id"):
         food_bundle["cart_id"] = food_cart_any["cart_id"]
+    if coupon_code:
+        food_bundle["staged_coupon"] = {
+            "code": coupon_code,
+            "discount_inr": coupon_discount,
+            "total_before": cart_before,
+            "total_after": cart_after,
+            "applied": False,
+        }
 
+    dineout_status = "RESCUED" if rescue_mode else "STAGED"
     bundle = {
         "event": event_title,
         "requestId": uuid_session,
+        "rescue_mode": rescue_mode,
+        "rescue_reason": rescue_reason or None,
+        "addresses": {
+            "im": im_addr_id,
+            "food": food_addr_id,
+            "dessert": dessert_addr_id,
+            "dineout_location": loc0.get("id") if isinstance(loc0, dict) else None,
+        },
         "dineout": {
-            "restaurantId": rest_id,
-            "restaurant": _rest0.get("name"),
-            "slot": slot_label,
+            # Never stage a bookable venue id when the night was rescued.
+            "restaurantId": None if rescue_mode else (rest_id or None),
+            "restaurant": None if rescue_mode else _rest0.get("name"),
+            "slot": None if rescue_mode else slot_label,
             "guests": guests,
-            "status": "STAGED",
-            "costForTwo": _rest0.get("costForTwo") or _rest0.get("price_for_two_inr"),
+            "status": dineout_status,
+            "costForTwo": (
+                None
+                if rescue_mode
+                else (_rest0.get("costForTwo") or _rest0.get("price_for_two_inr"))
+            ),
+            "attemptedRestaurantId": (rest_id or None) if rescue_mode else None,
         },
         "instamart": im_bundle,
         "food": food_bundle,
@@ -721,7 +1009,7 @@ def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[st
 
     dine_name = _rest0.get("name", "Restaurant")
     im_total = im_bundle.get("total", "?")
-    food_total = food_bundle.get("total", "?")
+    food_total = cart_after if cart_after is not None else food_bundle.get("total", "?")
     im_lines_txt = ", ".join(
         f"{ln['name']} ×{ln['qty']} (₹{ln['line_total_inr']})" for ln in im_line_summaries
     ) or im_query
@@ -730,21 +1018,37 @@ def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[st
         {
             "type": "event_bundle",
             "title": f"Evening plan · {event_title}",
-            "subtitle": f"Dineout + Instamart + {dessert_query} — review each leg",
+            "subtitle": (
+                f"No table — Food dinner + Instamart staged"
+                if rescue_mode
+                else f"Dineout + Instamart + {dessert_query} — review each leg"
+            ),
             "meta": bundle,
         },
-        {
+    ]
+    if rescue_mode:
+        feed.append({
+            "type": "rescue",
+            "title": "Slot vanished · night still happens",
+            "subtitle": (
+                f"No Dineout table ({rescue_reason or 'unavailable'}). "
+                f"Staged {cuisine} delivery + supplies instead."
+            ),
+            "meta": {"reason": rescue_reason, "cuisine": cuisine},
+        })
+    else:
+        feed.append({
             "type": "dineout",
             "title": dine_name,
             "subtitle": f"Table for {guests} · {slot_label} · confirm to book",
             "meta": {"restaurant_id": rest_id, "slot": slot_label, "guests": guests},
-        },
-    ]
+        })
+
     for ln in im_line_summaries:
         feed.append({
             "type": "instamart",
             "title": ln["name"],
-            "subtitle": f"×{ln['qty']} · ₹{ln['line_total_inr']} staged",
+            "subtitle": f"×{ln['qty']} · ₹{ln['line_total_inr']} staged · {im_addr_id}",
             "meta": {
                 "product_id": ln.get("product_id"),
                 "spinId": ln.get("spinId"),
@@ -752,6 +1056,7 @@ def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[st
                 "unit_price_inr": ln["unit_price_inr"],
                 "line_total_inr": ln["line_total_inr"],
                 "price_inr": ln["unit_price_inr"],
+                "addressId": im_addr_id,
             },
         })
     if not im_line_summaries:
@@ -765,23 +1070,75 @@ def run_chrono_host(uuid_session: str, ctx: dict[str, Any]) -> Generator[dict[st
                 "meta": {
                     "product_id": p.get("productId") or p.get("product_id"),
                     "price_inr": price,
+                    "addressId": im_addr_id,
                 },
             })
+
+    food_title = (
+        f"{food_name} · {cuisine} dinner delivery"
+        if rescue_mode
+        else f"{food_name} · {dessert_query} @ 10 PM"
+    )
+    food_sub = f"Staged cart ₹{food_total}"
+    if coupon_code and cart_before is not None and cart_after is not None:
+        food_sub = f"₹{cart_before} → ₹{cart_after} with {coupon_code} (apply on confirm)"
     feed.append({
         "type": "restaurant",
-        "title": f"{dessert_name} · {dessert_query} @ 10 PM",
-        "subtitle": f"Staged cart ₹{food_total} — I'll remind you to place at 10 PM",
-        "meta": {"restaurant_id": dessert_rid, "cuisine": dessert_query},
+        "title": food_title,
+        "subtitle": food_sub,
+        "meta": {
+            "restaurant_id": food_rid,
+            "cuisine": food_query,
+            "addressId": food_addr,
+            "role": food_role,
+        },
     })
+    if coupon_code:
+        feed.append({
+            "type": "coupon",
+            "title": f"🏷️ {coupon_code}",
+            "subtitle": (
+                f"₹{coupon_discount} off · cart ₹{cart_before} → ₹{cart_after}"
+                if cart_before is not None
+                else f"₹{coupon_discount} off COD"
+            ),
+            "meta": {
+                "code": coupon_code,
+                "discount_inr": coupon_discount,
+                "total_before": cart_before,
+                "total_after": cart_after,
+                "applied": False,
+            },
+        })
 
-    reply = (
-        f"Here's your evening bundle for **{event_title}** ({guests} guests · {cuisine}):\n\n"
-        f"1. **Dineout** — {dine_name}, table for {guests} at {slot_label}. Reply **confirm table** to book.\n"
-        f"2. **Instamart** — {im_lines_txt} (₹{im_total}). Reply **confirm groceries** to checkout.\n"
-        f"3. **Food** — {dessert_query} via {dessert_name} staged (₹{food_total}). "
-        f"I'll remind you at **10 PM** to place; reply **confirm dessert** when ready.\n\n"
-        "Nothing has been placed automatically."
-    )
+    if rescue_mode:
+        reply = (
+            f"**No table available** for **{event_title}** ({guests} guests · {cuisine}) — "
+            f"I pivoted so the night still happens:\n\n"
+            f"1. **Food dinner** — {food_name} staged for delivery (₹{food_total}"
+            + (f", {coupon_code} ready" if coupon_code else "")
+            + f"). Reply **confirm dessert** to place.\n"
+            f"2. **Instamart** — {im_lines_txt} (₹{im_total}) @ `{im_addr_id}`. "
+            f"Reply **confirm groceries** to checkout.\n\n"
+            "Nothing has been placed automatically."
+        )
+    else:
+        reply = (
+            f"Here's your evening bundle for **{event_title}** ({guests} guests · {cuisine}):\n\n"
+            f"1. **Dineout** — {dine_name}, table for {guests} at {slot_label}. "
+            f"Reply **confirm table** to book.\n"
+            f"2. **Instamart** — {im_lines_txt} (₹{im_total})"
+            + (f" @ `{im_addr_id}`" if im_addr_id else "")
+            + ". Reply **confirm groceries** to checkout.\n"
+            f"3. **Food** — {dessert_query} via {food_name} staged (₹{food_total}"
+            + (
+                f"; **{coupon_code}** drops it from ₹{cart_before} → ₹{cart_after}"
+                if coupon_code and cart_before is not None
+                else ""
+            )
+            + "). I'll remind you at **10 PM** to place; reply **confirm dessert** when ready.\n\n"
+            "Nothing has been placed automatically."
+        )
     yield {"type": "feed", "payload": {"items": feed}}
     yield {"type": "assistant", "payload": {"text": reply}}
     yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": feed}}
@@ -810,6 +1167,7 @@ def _confirm_leg(
     """
     if leg == "table":
         # Prefer restaurant/slot staged in the Chrono bundle when present.
+        bundle: dict[str, Any] = {}
         dine: dict[str, Any] = {}
         try:
             import json
@@ -818,12 +1176,27 @@ def _confirm_leg(
             raw = get_user_preferences().get("last_event_bundle")
             if isinstance(raw, str):
                 raw = json.loads(raw)
-            if isinstance(raw, dict) and isinstance(raw.get("dineout"), dict):
-                dine = raw["dineout"]
+            if isinstance(raw, dict):
+                bundle = raw
+                if isinstance(raw.get("dineout"), dict):
+                    dine = raw["dineout"]
         except Exception:  # noqa: BLE001
             dine = {}
+        if bundle.get("rescue_mode") or str(dine.get("status") or "").upper() == "RESCUED":
+            reply = (
+                "No Dineout table was staged — Chrono rescued the night with **Food dinner delivery**. "
+                "Reply **confirm dessert** to place that cart instead."
+            )
+            yield {"type": "assistant", "payload": {"text": reply}}
+            yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": []}}
+            return
         guests = int(dine.get("guests") or ctx.get("partySize") or 6)
-        rid = str(dine.get("restaurantId") or "do_italian_804")
+        rid = str(dine.get("restaurantId") or "").strip()
+        if not rid:
+            reply = "No Dineout restaurant was staged — re-run Chrono-Host, then confirm table."
+            yield {"type": "assistant", "payload": {"text": reply}}
+            yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": []}}
+            return
         slot = str(dine.get("slot") or "20:00")
         bk = call_tool("dineout", "book_table", {
             "restaurantId": rid,
@@ -878,20 +1251,71 @@ def _confirm_leg(
         yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": feed}}
 
     elif leg == "dessert":
+        food_meta: dict[str, Any] = {}
+        staged_coupon: dict[str, Any] = {}
+        addr_hints: dict[str, Any] = {}
+        try:
+            import json
+            from backend.memory import get_user_preferences
+
+            raw = get_user_preferences().get("last_event_bundle")
+            if isinstance(raw, str):
+                raw = json.loads(raw)
+            if isinstance(raw, dict):
+                if isinstance(raw.get("food"), dict):
+                    food_meta = raw["food"]
+                    if isinstance(food_meta.get("staged_coupon"), dict):
+                        staged_coupon = food_meta["staged_coupon"]
+                if isinstance(raw.get("addresses"), dict):
+                    addr_hints = raw["addresses"]
+        except Exception:  # noqa: BLE001
+            food_meta = {}
+
         addr_any = call_tool("food", "get_addresses", {})
         addrs = addr_any if isinstance(addr_any, dict) else {}
-        addr_id = _pick_address_id(ctx, addrs)
+        addr_id = str(
+            food_meta.get("addressId")
+            or addr_hints.get("dessert")
+            or addr_hints.get("food")
+            or ""
+        ).strip()
+        if not addr_id:
+            addr_id = _pick_address_id(ctx, addrs)
+
         cart = call_tool("food", "get_food_cart", {"requestId": sid, "addressId": addr_id})
         yield {"type": "tool", "payload": _sse_tool("food", "/food", "get_food_cart", {"requestId": sid}, cart)}
         items = (cart.get("items") or cart.get("lines") or []) if isinstance(cart, dict) else []
         if not items:
             reply = (
-                "Food dessert cart is empty for this session — re-run Chrono-Host so dessert is staged, "
+                "Food cart is empty for this session — re-run Chrono-Host so dinner/dessert is staged, "
                 "then confirm again."
             )
             yield {"type": "assistant", "payload": {"text": reply}}
             yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": []}}
             return
+
+        before = _food_cart_total(cart)
+        coupon_code = str(staged_coupon.get("code") or "").strip()
+        if coupon_code:
+            yield _thinking(f"Executor • applying staged coupon {coupon_code}.")
+            applied = call_tool(
+                "food",
+                "apply_food_coupon",
+                {"requestId": sid, "code": coupon_code, "addressId": addr_id},
+            )
+            yield {
+                "type": "tool",
+                "payload": _sse_tool(
+                    "food", "/food", "apply_food_coupon", {"code": coupon_code}, applied
+                ),
+            }
+            cart = call_tool("food", "get_food_cart", {"requestId": sid, "addressId": addr_id})
+            yield {
+                "type": "tool",
+                "payload": _sse_tool("food", "/food", "get_food_cart", {"requestId": sid}, cart),
+            }
+
+        after = _food_cart_total(cart)
         cart_id = (cart.get("cart_id") if isinstance(cart, dict) else None) or f"cart_fd_{sid}"
         out = call_tool(
             "food",
@@ -906,7 +1330,12 @@ def _confirm_leg(
                 out,
             ),
         }
-        reply = "Dessert **placed** via place_food_order (mock). 10 PM reminder is manual in v1."
+        role = str(food_meta.get("role") or "dessert")
+        label = "Dinner" if role == "dinner_delivery" else "Dessert"
+        delta = ""
+        if coupon_code and before is not None and after is not None:
+            delta = f" · {coupon_code} applied (₹{before} → ₹{after})"
+        reply = f"{label} **placed** via place_food_order (mock){delta}."
         yield {"type": "assistant", "payload": {"text": reply}}
         yield {"type": "done", "payload": {"assistant_reply": reply, "feed_items": []}}
 

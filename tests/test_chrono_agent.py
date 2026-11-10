@@ -274,3 +274,215 @@ def test_live_shaped_im_and_locations_parse():
     }
     lines = _im_cart_lines(_im_products(search))
     assert lines == [{"spinId": "SPIN1", "quantity": 2, "skuId": "SKU1"}]
+
+
+def test_chrono_slot_gone_rescues_to_food_dinner(monkeypatch: pytest.MonkeyPatch):
+    """Empty/unavailable Dineout slots pivot to Food dinner + Instamart — no fake restaurant id."""
+    from mcp_server import common
+
+    monkeypatch.setattr(common, "_mock_scenario", "slot_gone")
+    sid = "chrono_slot_rescue_sess"
+    events = list(
+        run_agent_stream(
+            "Plan my evening for 8 — dinner out and dessert at home",
+            {
+                "scenario": "chrono_host",
+                "requestId": sid,
+                "event": {
+                    "guests": 8,
+                    "cuisineHint": "italian",
+                    "title": "Slot vanish night",
+                    "imQuery": "party plates napkins drinks",
+                },
+            },
+        )
+    )
+    assert events[-1]["type"] == "done"
+    reply = (events[-1]["payload"].get("assistant_reply") or "").lower()
+    assert "no table" in reply or "pivoted" in reply
+    assert "confirm dessert" in reply
+    assert "confirm groceries" in reply
+
+    feed_items = next(
+        (e["payload"]["items"] for e in events if e.get("type") == "feed"),
+        [],
+    )
+    bundle_card = next((i for i in feed_items if i.get("type") == "event_bundle"), None)
+    assert bundle_card
+    meta = bundle_card.get("meta") or {}
+    assert meta.get("rescue_mode") is True
+    assert (meta.get("dineout") or {}).get("status") == "RESCUED"
+    assert (meta.get("dineout") or {}).get("restaurantId") in (None, "")
+    assert (meta.get("food") or {}).get("role") == "dinner_delivery"
+    assert any(i.get("type") == "rescue" for i in feed_items)
+
+    # Confirm table must refuse booking — night was rescued
+    confirm_table = list(run_agent_stream("confirm table", {"requestId": sid}))
+    table_reply = (confirm_table[-1]["payload"].get("assistant_reply") or "").lower()
+    assert "book_table" not in table_reply
+    assert "rescued" in table_reply or "confirm dessert" in table_reply
+    book_tools = [
+        e
+        for e in confirm_table
+        if e.get("type") == "tool" and (e.get("payload") or {}).get("method") == "book_table"
+    ]
+    assert book_tools == []
+
+
+def test_chrono_coupon_heist_stages_then_applies_on_confirm():
+    """Chrono fetches coupons and shows delta; confirm dessert applies then places."""
+    sid = "chrono_coupon_heist_sess"
+    stage = list(
+        run_agent_stream(
+            "Plan my evening for 6 — dinner out and dessert at home",
+            {
+                "scenario": "chrono_host",
+                "requestId": sid,
+                "event": {
+                    "guests": 6,
+                    "cuisineHint": "italian",
+                    "title": "Coupon heist",
+                    "dessertQuery": "gelato",
+                },
+            },
+        )
+    )
+    assert stage[-1]["type"] == "done"
+    fetch_tools = [
+        e
+        for e in stage
+        if e.get("type") == "tool"
+        and (e.get("payload") or {}).get("method") == "fetch_food_coupons"
+    ]
+    assert fetch_tools, "expected fetch_food_coupons before confirm"
+    feed_items = next(
+        (e["payload"]["items"] for e in stage if e.get("type") == "feed"),
+        [],
+    )
+    coupon_card = next((i for i in feed_items if i.get("type") == "coupon"), None)
+    assert coupon_card, "expected coupon feed card with cart delta"
+    code = (coupon_card.get("meta") or {}).get("code")
+    assert code
+    assert (coupon_card.get("meta") or {}).get("applied") is False
+    food_meta = next(
+        ((i.get("meta") or {}).get("food") for i in feed_items if i.get("type") == "event_bundle"),
+        {},
+    )
+    staged = (food_meta or {}).get("staged_coupon") or {}
+    assert staged.get("code") == code
+    assert staged.get("applied") is False
+
+    # Coupon must not be applied during staging
+    apply_during_stage = [
+        e
+        for e in stage
+        if e.get("type") == "tool"
+        and (e.get("payload") or {}).get("method") == "apply_food_coupon"
+    ]
+    assert apply_during_stage == []
+
+    confirm = list(run_agent_stream("confirm dessert", {"requestId": sid}))
+    assert confirm[-1]["type"] == "done"
+    apply_tools = [
+        e
+        for e in confirm
+        if e.get("type") == "tool"
+        and (e.get("payload") or {}).get("method") == "apply_food_coupon"
+    ]
+    assert apply_tools, "confirm dessert should apply staged coupon"
+    place_tools = [
+        e
+        for e in confirm
+        if e.get("type") == "tool"
+        and (e.get("payload") or {}).get("method") in ("place_food_order", "place_order")
+    ]
+    assert place_tools
+    reply = (confirm[-1]["payload"].get("assistant_reply") or "").lower()
+    assert "placed" in reply
+    assert code.lower() in reply
+
+
+def test_chrono_three_city_courier_pins_distinct_addresses():
+    """One Chrono prompt can pin Instamart and Food carts to different saved addresses."""
+    sid = "chrono_three_city_sess"
+    events = list(
+        run_agent_stream(
+            "Plan my evening — plates to Baner, dessert to Koregaon Park",
+            {
+                "scenario": "chrono_host",
+                "requestId": sid,
+                "event": {
+                    "guests": 4,
+                    "cuisineHint": "italian",
+                    "title": "Three-city courier",
+                    "imAddressId": "addr_baner_002",
+                    "dessertAddressId": "addr_kp_001",
+                    "foodAddressId": "addr_hinj_005",
+                    "dessertQuery": "gelato",
+                    "imQuery": "party plates napkins drinks",
+                },
+            },
+        )
+    )
+    assert events[-1]["type"] == "done"
+    feed_items = next(
+        (e["payload"]["items"] for e in events if e.get("type") == "feed"),
+        [],
+    )
+    bundle = next((i for i in feed_items if i.get("type") == "event_bundle"), None)
+    assert bundle
+    addrs = (bundle.get("meta") or {}).get("addresses") or {}
+    assert addrs.get("im") == "addr_baner_002"
+    assert addrs.get("dessert") == "addr_kp_001"
+    assert addrs.get("food") == "addr_hinj_005"
+    assert addrs["im"] != addrs["dessert"]
+
+    im_update = next(
+        (
+            e
+            for e in events
+            if e.get("type") == "tool"
+            and (e.get("payload") or {}).get("method") == "update_cart"
+        ),
+        None,
+    )
+    assert im_update
+    assert (im_update["payload"].get("params") or {}).get("selectedAddressId") == "addr_baner_002"
+
+    food_update = next(
+        (
+            e
+            for e in events
+            if e.get("type") == "tool"
+            and (e.get("payload") or {}).get("method") == "update_food_cart"
+        ),
+        None,
+    )
+    assert food_update
+    # Normal (non-rescue) path uses dessert address for Food cart
+    assert (food_update["payload"].get("params") or {}).get("addressId") == "addr_kp_001"
+
+
+def test_leg_address_ids_match_city_and_tag_hints():
+    from backend.agent import _leg_address_ids
+
+    addrs = {
+        "addresses": [
+            {"addressId": "addr_a", "label": "Home", "city": "Ahmedabad", "area": "SG Road"},
+            {"addressId": "addr_p", "label": "Work", "city": "Pune", "area": "Baner"},
+            {"addressId": "addr_u", "label": "Parents", "city": "Ujjain", "area": "Freeganj"},
+        ]
+    }
+    legs = _leg_address_ids(
+        {
+            "event": {
+                "imCity": "Ahmedabad",
+                "foodCity": "Pune",
+                "dessertCity": "Ujjain",
+            }
+        },
+        addrs,
+    )
+    assert legs["im"] == "addr_a"
+    assert legs["food"] == "addr_p"
+    assert legs["dessert"] == "addr_u"
